@@ -324,11 +324,12 @@ input[type="checkbox"]{
   background: rgba(255,255,255,.04);
   border-color: rgba(255,255,255,.18);
 }
-#hintPill{
-  max-width: 52%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pill.turn-ai{
+  animation: turnAiBlink .9s step-end infinite;
+}
+
+@keyframes turnAiBlink{
+  50%{ opacity:.35; }
 }
 .chip{
   background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
@@ -607,7 +608,6 @@ body.playing #wonderBtnSide{ display:inline-flex; }
   /* Tighten headers to reclaim vertical space */
   .panel .hd{ padding: 8px 10px; }
   .pill{ font-size: 11px; padding: 3px 7px; }
-  #hintPill{ max-width: 45%; }
 
   /* Compact the Human/AI boxes */
   .kv{ gap: 6px; }
@@ -709,7 +709,6 @@ body.playing #wonderBtnSide{ display:inline-flex; }
           <span class="pill" id="turnPill">Turn</span>
           <span class="pill" id="actionPill">Picks</span>
         </div>
-        <div class="pill" id="hintPill">—</div>
       </div>
       <div class="bd">
         <div class="tableau" id="tableau"></div>
@@ -1810,7 +1809,6 @@ const elLog = document.getElementById("log");
 const elAgePill = document.getElementById("agePill");
 const elTurnPill = document.getElementById("turnPill");
 const elActionPill = document.getElementById("actionPill");
-const elHintPill = document.getElementById("hintPill");
 const elScorePill = document.getElementById("scorePill");
 const elStatusLine = document.getElementById("statusLine");
 const elHumanCards = document.getElementById("humanCards");
@@ -2642,6 +2640,7 @@ function render(){
 
   elAgePill.textContent = (pub.age==="ancient") ? "Ancient Age" : "Modern Age";
   elTurnPill.textContent = "Turn: " + playerName(pub.currentPlayer);
+  elTurnPill.classList.toggle("turn-ai", pub.currentPlayer===1 && !pub.ended);
   elActionPill.textContent = "Picks left: " + pub.picksLeftThisTurn;
   elScorePill.textContent = `Score: Human ${pub.score.human} VP – AI ${pub.score.ai} VP`;
 
@@ -2665,18 +2664,6 @@ function render(){
     <span class="pill">${swap}</span>
   `;
 
-  if (pub.ended){
-    const msg = (pub.score.human>pub.score.ai) ? "Human wins" : (pub.score.ai>pub.score.human) ? "AI wins" : "Draw";
-    elHintPill.textContent = msg;
-  } else if (pub.kingWonder){
-    elHintPill.textContent = (pub.kingWonder.phase==="offer")
-      ? `King Wonder: offer ${pub.kingWonder.maxOffer} card(s)`
-      : "King Wonder: choose 1 card";
-  } else if (pub.currentPlayer===0){
-    elHintPill.textContent = "Choose an accessible card";
-  } else {
-    elHintPill.textContent = "AI is choosing…";
-  }
 
   // Wonder (effect: 2 picks this turn)
   btnWonder.disabled = pub.ended || pub.currentPlayer!==0 || ( !Engine.canUseJokerDouble(pub,0) );
