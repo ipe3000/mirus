@@ -59,13 +59,6 @@
     .pill{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.16); color: var(--muted);}
     .pill.ok{border-color: rgba(34,197,94,.35); color: rgba(34,197,94,.95)}
     .pill.warn{border-color: rgba(245,158,11,.35); color: rgba(245,158,11,.95)}
-    .pill.blinking{
-      animation: pillBlink .9s ease-in-out infinite;
-    }
-    @keyframes pillBlink{
-      0%,100%{opacity:1}
-      50%{opacity:.3}
-    }
     .status{display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:13px; color: var(--muted);}
     .tableau{position:relative; margin:0 auto; padding:4px 0 2px;}
     .rowCards{display:none;}
@@ -331,11 +324,12 @@ input[type="checkbox"]{
   background: rgba(255,255,255,.04);
   border-color: rgba(255,255,255,.18);
 }
-#hintPill{
-  max-width: 52%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pill.turn-ai{
+  animation: turnAiBlink .9s step-end infinite;
+}
+
+@keyframes turnAiBlink{
+  50%{ opacity:.35; }
 }
 .chip{
   background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
@@ -614,7 +608,6 @@ body.playing #wonderBtnSide{ display:inline-flex; }
   /* Tighten headers to reclaim vertical space */
   .panel .hd{ padding: 8px 10px; }
   .pill{ font-size: 11px; padding: 3px 7px; }
-  #hintPill{ max-width: 45%; }
 
   /* Compact the Human/AI boxes */
   .kv{ gap: 6px; }
@@ -714,19 +707,11 @@ body.playing #wonderBtnSide{ display:inline-flex; }
         <div style="display:flex; gap:10px; align-items:center;">
           <span class="pill" id="agePill">Age</span>
           <span class="pill" id="turnPill">Turn</span>
-          <span class="pill" id="actionPill">AI Leader</span>
+          <span class="pill" id="actionPill">Picks</span>
         </div>
-        <div class="pill" id="hintPill">—</div>
       </div>
       <div class="bd">
         <div class="tableau" id="tableau"></div>
-        <details class="tableauDetails" style="margin-top:8px;">
-          <summary style="cursor:pointer; color: rgba(229,231,235,.85); font-size:12px;">Tableau structure details</summary>
-          <div class="note" style="margin-top:6px;">
-            Important: the <b>tableau structure</b> (which cards cover which) is defined in the <code>LAYOUT_ROWS</code> and <code>BLOCKERS</code> constants at the beginning of the script.
-            The structure is currently set according to the image layout (rows 2–4–3–4–3–4), with accessibility from bottom to top (the 4 cards at the bottom are the first accessible).
-          </div>
-        </details></div>
     </section>
 
     <aside class="panel">
@@ -759,9 +744,6 @@ body.playing #wonderBtnSide{ display:inline-flex; }
             <button id="logCloseBtn" class="ghost" title="Close log">Close</button>
           </div>
           <div class="log" id="log"></div>
-          <div class="note logNote" style="margin-top:8px">
-            Monte Carlo samples the face-down cards from the <i>unknown pool</i> (deck minus seen/taken cards), without “peeking” at their real identity.
-          </div>
         </div>
       </div>
     </aside>
@@ -1817,7 +1799,6 @@ const elLog = document.getElementById("log");
 const elAgePill = document.getElementById("agePill");
 const elTurnPill = document.getElementById("turnPill");
 const elActionPill = document.getElementById("actionPill");
-const elHintPill = document.getElementById("hintPill");
 const elScorePill = document.getElementById("scorePill");
 const elStatusLine = document.getElementById("statusLine");
 const elHumanCards = document.getElementById("humanCards");
@@ -2649,7 +2630,8 @@ function render(){
 
   elAgePill.textContent = (pub.age==="ancient") ? "Ancient Age" : "Modern Age";
   elTurnPill.textContent = "Turn: " + playerName(pub.currentPlayer);
-  elActionPill.textContent = `AI Leader: ${pub.jokerUsed[1] ? "used" : "available"}`;
+  elTurnPill.classList.toggle("turn-ai", pub.currentPlayer===1 && !pub.ended);
+  elActionPill.textContent = "Picks left: " + pub.picksLeftThisTurn;
   elScorePill.textContent = `Score: Human ${pub.score.human} VP – AI ${pub.score.ai} VP`;
 
   // End-of-game UI (presentation only)
@@ -2672,19 +2654,6 @@ function render(){
     <span class="pill">${swap}</span>
   `;
 
-  if (pub.ended){
-    const msg = (pub.score.human>pub.score.ai) ? "Human wins" : (pub.score.ai>pub.score.human) ? "AI wins" : "Draw";
-    elHintPill.textContent = msg;
-  } else if (pub.kingWonder){
-    elHintPill.textContent = (pub.kingWonder.phase==="offer")
-      ? `King Wonder: offer ${pub.kingWonder.maxOffer} card(s)`
-      : "King Wonder: choose 1 card";
-  } else if (pub.currentPlayer===0){
-    elHintPill.textContent = "Choose an accessible card";
-  } else {
-    elHintPill.textContent = "AI is choosing…";
-  }
-  elHintPill.classList.toggle("blinking", !pub.ended && !pub.kingWonder && pub.currentPlayer===1);
 
   // Wonder (effect: 2 picks this turn)
   btnWonder.disabled = pub.ended || pub.currentPlayer!==0 || ( !Engine.canUseJokerDouble(pub,0) );
