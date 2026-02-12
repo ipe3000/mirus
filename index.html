@@ -566,6 +566,9 @@ body.playing #wonderBtnSide{ display:inline-flex; }
 #kingOverlay{display:none; position:fixed; inset:0; background: rgba(0,0,0,.62); z-index: 998; align-items:center; justify-content:center; padding: 12px;}
 #kingOverlay .panelBox{ max-width: 760px; width:100%; background: rgba(17,24,39,.86); border:1px solid rgba(255,255,255,.16); border-radius: 16px; box-shadow: 0 22px 60px rgba(0,0,0,.65); padding: 12px; }
 #kingOverlay .miniGrid{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-top:10px; }
+#kingOverlay .kingSuitGroup{margin-top:10px;}
+#kingOverlay .kingSuitTitle{font-size:12px; color: rgba(229,231,235,.78); margin-bottom:6px;}
+#kingOverlay .kingSuitCards{display:flex; flex-wrap:wrap; gap:10px;}
 #kingOverlay .kingHint{ color: rgba(229,231,235,.92); font-size: 12.75px; line-height: 1.35; margin-top:6px; }
 #kingOverlay .kingReq{ color: rgba(229,231,235,.86); font-size: 12px; margin-top:6px; }
 #kingOverlay .kingErr{ color: rgba(239,68,68,.95); font-size: 12px; margin-top:8px; min-height: 16px;}
@@ -1982,13 +1985,22 @@ function renderKingCards(cards, kw){
   elKingGrid.innerHTML = "";
 
   const phase = kw.phase;
+  const suitOrder = {S:0, C:1, H:2, D:3};
+  const sortedCards = (cards||[]).slice().sort((a,b)=>{
+    const s = (suitOrder[a?.suit] ?? 99) - (suitOrder[b?.suit] ?? 99);
+    if (s!==0) return s;
+    const av = (a?.kind === "king") ? 99 : (a?.value ?? 0);
+    const bv = (b?.kind === "king") ? 99 : (b?.value ?? 0);
+    if (av!==bv) return av-bv;
+    return String(a?.id||"").localeCompare(String(b?.id||""));
+  });
 
   function canSelect(card){
     if (KING_SELECTED.has(card.id)) return true; // always allow deselect
     return KING_SELECTED.size < 1;
   }
 
-  for (const c of cards){
+  function renderMiniCard(c){
     const el = document.createElement("div");
     el.className = "miniCard";
     if (c && c.suit) el.classList.add("suit" + c.suit);
@@ -2021,13 +2033,44 @@ function renderKingCards(cards, kw){
         const wm = STATE.pub.wonderMark[p];
         const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
         wm.delta = (cur===-1) ? 0 : (cur===0 ? 1 : -1);
+        syncKingOverlay();
+        if (btnKingConfirm && !btnKingConfirm.disabled) btnKingConfirm.click();
+        return;
       }
 
       // Re-render to apply button state
       syncKingOverlay();
     });
 
-    elKingGrid.appendChild(el);
+    return el;
+  }
+
+  if (phase === "mark"){
+    const grouped = {S:[], C:[], H:[], D:[]};
+    for (const c of sortedCards){
+      if (!c || !grouped[c.suit]) continue;
+      grouped[c.suit].push(c);
+    }
+
+    for (const s of ["S","C","H","D"]){
+      const groupCards = grouped[s];
+      if (!groupCards.length) continue;
+      const box = document.createElement("div");
+      box.className = "kingSuitGroup";
+
+      const ttl = document.createElement("div");
+      ttl.className = "kingSuitTitle";
+      ttl.textContent = `${SUIT_ICON[s]} ${SUIT_NAME[s]}`;
+      box.appendChild(ttl);
+
+      const row = document.createElement("div");
+      row.className = "kingSuitCards";
+      for (const c of groupCards) row.appendChild(renderMiniCard(c));
+      box.appendChild(row);
+      elKingGrid.appendChild(box);
+    }
+  } else {
+    for (const c of sortedCards) elKingGrid.appendChild(renderMiniCard(c));
   }
 
   if (phase === "mark"){
@@ -2042,7 +2085,7 @@ function renderKingCards(cards, kw){
     const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
     btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
     btnKingConfirm.disabled = false;
-    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1.";
+    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1 (it confirms automatically).";
   }
 }
 
