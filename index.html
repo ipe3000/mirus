@@ -1019,12 +1019,31 @@ function makeAgeDeck(age){
   return deck;
 }
 
-function sumSuit(cards, suit){
-  let s=0; for(const c of cards){ if (c.kind==="card" && c.suit===suit) s += c.value; } return s;
+function effectiveCardValue(card, wonderMods){
+  if (!card || card.kind!=="card") return card ? card.value : 0;
+  if (!wonderMods) return card.value;
+  for (let p=0; p<2; p++){
+    const wm = wonderMods[p];
+    if (!wm) continue;
+    if (wm.cardId === card.id && typeof wm.delta === "number") return card.value + wm.delta;
+  }
+  return card.value;
 }
-function valuesSet(cards, suit){
+
+function sumSuit(cards, suit, wonderMods=null){
+  let s=0;
+  for(const c of cards){
+    if (c.kind==="card" && c.suit===suit) s += effectiveCardValue(c, wonderMods);
+  }
+  return s;
+}
+function valuesSet(cards, suit, wonderMods=null){
   const set = new Set();
-  for(const c of cards){ if (c.kind==="card" && c.suit===suit) set.add(c.value); }
+  for(const c of cards){
+    if (c.kind!=="card" || c.suit!==suit) continue;
+    const v = effectiveCardValue(c, wonderMods);
+    if (v>=1 && v<=10) set.add(v);
+  }
   return set;
 }
 
@@ -1077,8 +1096,8 @@ function circularRuns(values){
   return runs;
 }
 
-function bestDiamondStraight(cards){
-  const set = valuesSet(cards,"D");
+function bestDiamondStraight(cards, wonderMods=null){
+  const set = valuesSet(cards,"D", wonderMods);
   const runs = circularRuns(set);
   if (runs.length===0) return {len:0, maxCard:0, cards:[]};
   // tie-break: same length => highest card in the straight wins (here interpreted as the max rank present)
@@ -1091,15 +1110,15 @@ function runKey(run){
   return run.cards.join(",");
 }
 
-function diamondStraights(cards){
-  const set = valuesSet(cards,"D");
+function diamondStraights(cards, wonderMods=null){
+  const set = valuesSet(cards,"D", wonderMods);
   const runs = circularRuns(set).filter(r=>r.len>=2);
   runs.sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard) || (runKey(b).localeCompare(runKey(a))));
   return runs;
 }
 
-function topDiamondStraights(cards, k=2){
-  return diamondStraights(cards).slice(0,k);
+function topDiamondStraights(cards, k=2, wonderMods=null){
+  return diamondStraights(cards, wonderMods).slice(0,k);
 }
 function runText(run){
   if (!run || !run.cards || run.cards.length===0) return "—";
@@ -1115,14 +1134,14 @@ function cultureVP(cards){
   return {vp, runs};
 }
 
-function cultureContestVP(hCards, aCards){
+function cultureContestVP(hCards, aCards, wonderMods=null){
   // Global, contested Culture (Mirus 2.0): award tiers are assigned across BOTH players' ♦ sequences.
   // Tier 1: +10 to the best sequence (len ≥ 2)
   // Tier 2: +5 to the second-best sequence (len ≥ 2)
   // Tie-breaks: longer length wins; if tie, higher card wins.
   // If both length and high card tie, the tier is shared.
-  const hRuns = diamondStraights(hCards);
-  const aRuns = diamondStraights(aCards);
+  const hRuns = diamondStraights(hCards, wonderMods);
+  const aRuns = diamondStraights(aCards, wonderMods);
 
   const cand = [];
   for (const r of hRuns){ cand.push({owner:0, run:r, key:`${r.len}|${r.maxCard}`}); }
@@ -1154,47 +1173,59 @@ function cultureContestVP(hCards, aCards){
   return {h, a, hRuns, aRuns, bestGroup, secondGroup};
 }
 
-function techPoints(cards){
-  const set = valuesSet(cards,"H");
+function techPoints(cards, wonderMods=null){
+  const set = valuesSet(cards,"H", wonderMods);
   const runs = circularRuns(set);
   let best = 0;
   for (const r of runs) if (r.len>best) best = r.len;
   return (best>=3) ? (2*best) : 0;
 }
-function foodPoints(cards){
-  return Math.floor(sumSuit(cards,"C")/5);
+function foodPoints(cards, wonderMods=null){
+  return Math.floor(sumSuit(cards,"C", wonderMods)/5);
 }
 
-function ancientScoring(hAnc, aAnc){
+function ancientScoring(hAnc, aAnc, wonderMods=null){
   let h=0, a=0;
-  const hs = sumSuit(hAnc,"S");
-  const as = sumSuit(aAnc,"S");
+  const hs = sumSuit(hAnc,"S", wonderMods);
+  const as = sumSuit(aAnc,"S", wonderMods);
   if (hs>as) h+=4; else if (as>hs) a+=4;
   if (hasAllFourOfValue(hAnc,5)) h-=3;
   if (hasAllFourOfValue(aAnc,5)) a-=3;
   return {human:h, ai:a, detail:{hs,as}};
 }
 
-function modernScoring(allH, allA){
+function modernScoring(allH, allA, wonderMods=null){
   let h=0, a=0;
-  const hs = sumSuit(allH,"S");
-  const as = sumSuit(allA,"S");
+  const hs = sumSuit(allH,"S", wonderMods);
+  const as = sumSuit(allA,"S", wonderMods);
   if (hs>as) h+=8; else if (as>hs) a+=8;
 
-  h += foodPoints(allH); a += foodPoints(allA);
+  h += foodPoints(allH, wonderMods); a += foodPoints(allA, wonderMods);
 
 
-  const cult = cultureContestVP(allH, allA);
+  const cult = cultureContestVP(allH, allA, wonderMods);
   h += cult.h;
   a += cult.a;
 
-  h += techPoints(allH);
-  a += techPoints(allA);
+  h += techPoints(allH, wonderMods);
+  a += techPoints(allA, wonderMods);
 
   if (hasAllFourOfValue(allH,10)) h-=6;
   if (hasAllFourOfValue(allA,10)) a-=6;
 
   return {human:h, ai:a, detail:{hs,as,cult}};
+}
+
+function totalScoring(allH, allA, wonderMods=null){
+  const hAnc = allH.filter(c=>c.age==="ancient");
+  const aAnc = allA.filter(c=>c.age==="ancient");
+  const anc = ancientScoring(hAnc, aAnc, wonderMods);
+  const mod = modernScoring(allH, allA, wonderMods);
+  return {
+    human: anc.human + mod.human,
+    ai: anc.ai + mod.ai,
+    detail: {anc, mod}
+  };
 }
 
 /* ============================================================
@@ -1267,7 +1298,11 @@ const Engine = (() => {
       picksLeftThisTurn: 1,
       jokerUsed: [false,false],
       modernSwapStillAvailable: false, // settato quando si entra in modern
-      kingWonder: null, // active only while resolving the 3rd King wonder
+      kingWonder: null, // active while resolving Wonder mark / final +/-1 choice
+      wonderMark: [
+        { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false },
+        { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false }
+      ],
       slots,
       taken: [[],[]],
       score: {human:0, ai:0},
@@ -1365,36 +1400,25 @@ const Engine = (() => {
     return best;
   }
 
+  function wonderModsFromState(pub){
+    return [0,1].map(p=>{
+      const wm = pub.wonderMark[p] || {};
+      return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+    });
+  }
+
   function startKingWonder(state, builder){
     const {pub} = state;
-    const offerer = 1 - builder;
-    const nonKings = pub.taken[offerer].filter(c=>c && c.kind!=="king");
-    const maxOffer = Math.min(3, nonKings.length);
-    if (maxOffer <= 0) return {started:false};
-
-    const modernNonKings = nonKings.filter(c=>c.age==="modern");
-    const reqModern = Math.min(modernNonKings.length, maxOffer);
-
-    // If there are at least `maxOffer` Modern non-Kings, the offer must be Modern-only.
-    const eligible = (modernNonKings.length >= maxOffer) ? modernNonKings : nonKings;
+    const ownCards = pub.taken[builder].filter(c=>c && c.kind==="card");
+    if (!ownCards.length) return {started:false};
 
     pub.kingWonder = {
-      phase: (offerer===0) ? "offer" : "choose",
+      phase: "mark",
       builder,
-      offerer,
-      maxOffer,
-      reqModern,
-      eligibleIds: eligible.map(c=>c.id),
-      offeredIds: [],
+      eligibleIds: ownCards.map(c=>c.id),
       pendingFinalize: true
     };
-
-    if (offerer === 1){
-      const offered = pickOfferCardsAI(nonKings, maxOffer, reqModern);
-      pub.kingWonder.phase = "choose";
-      pub.kingWonder.offeredIds = offered.map(c=>c.id);
-    }
-
+    pub.wonderMark[builder].pending = true;
     return {started:true};
   }
 
@@ -1407,7 +1431,7 @@ const Engine = (() => {
       if (pub.age === "ancient"){
         const hAnc = pub.taken[0].filter(c=>c.age==="ancient");
         const aAnc = pub.taken[1].filter(c=>c.age==="ancient");
-        const sc = ancientScoring(hAnc, aAnc);
+        const sc = ancientScoring(hAnc, aAnc, wonderModsFromState(pub));
         pub.score.human += sc.human;
         pub.score.ai += sc.ai;
 
@@ -1428,7 +1452,24 @@ const Engine = (() => {
       } else {
         const allH = pub.taken[0];
         const allA = pub.taken[1];
-        const sc = modernScoring(allH, allA);
+        const pendingFinal = [0,1].find(p=>{
+          const wm = pub.wonderMark[p];
+          return wm && wm.cardId && wm.finalChoicePending;
+        });
+        if (typeof pendingFinal === "number"){
+          pub.kingWonder = {
+            phase: "finalChoice",
+            builder: pendingFinal,
+            eligibleDelta: [-1,0,1],
+            pendingFinalize: true
+          };
+          if (pendingFinal===1 && !state.__sim){
+            return autoResolveKingWonder(state);
+          }
+          return {ok:true, pendingKingWonder:true, flipped};
+        }
+
+        const sc = modernScoring(allH, allA, wonderModsFromState(pub));
         pub.score.human += sc.human;
         pub.score.ai += sc.ai;
         pub.ended = true;
@@ -1454,52 +1495,57 @@ const Engine = (() => {
   function submitKingWonderOffer(state, selectedIds){
     const {pub} = state;
     const kw = pub.kingWonder;
-    if (!kw || kw.phase !== "offer") return {ok:false, msg:"No King Wonder offer is pending."};
+    if (!kw || kw.phase !== "mark") return {ok:false, msg:"No Wonder mark is pending."};
     if (pub.ended) return {ok:false, msg:"Game over."};
 
     const uniq = Array.from(new Set(selectedIds||[]));
-    if (uniq.length !== kw.maxOffer) return {ok:false, msg:`You must offer exactly ${kw.maxOffer} cards.`};
+    if (uniq.length !== 1) return {ok:false, msg:"Select exactly 1 card to mark."};
 
     const eligible = new Set(kw.eligibleIds);
-    for (const id of uniq){
-      if (!eligible.has(id)) return {ok:false, msg:"Invalid offer (eligible non-King cards only)."};
-    }
+    const chosenId = uniq[0];
+    if (!eligible.has(chosenId)) return {ok:false, msg:"Invalid mark (choose one of your own non-King cards)."};
 
-    const offererCards = pub.taken[kw.offerer];
-    const offeredCards = uniq.map(id => offererCards.find(c=>c && c.id===id)).filter(Boolean);
-    if (offeredCards.length !== kw.maxOffer) return {ok:false, msg:"Invalid offer."};
-    if (offeredCards.some(c=>c.kind!=="card")) return {ok:false, msg:"Only non-King cards can be offered."};
+    const ownCards = pub.taken[kw.builder];
+    const marked = ownCards.find(c=>c && c.id===chosenId && c.kind==="card");
+    if (!marked) return {ok:false, msg:"Invalid mark."};
 
-    const modernCount = offeredCards.filter(c=>c.age==="modern").length;
-    if (modernCount !== kw.reqModern) return {ok:false, msg:`Offer must include ${kw.reqModern} Modern card(s).`};
+    pub.wonderMark[kw.builder] = {
+      cardId: marked.id,
+      cardBaseValue: marked.value,
+      pending: false,
+      delta: 0,
+      finalChoicePending: true
+    };
 
-    kw.phase = "choose";
-    kw.offeredIds = offeredCards.map(c=>c.id);
-
-    // If the builder is AI, it chooses immediately and the engine finalizes the pending take.
-    if (kw.builder === 1){
-      const chosen = pickBestFromOfferAI(offeredCards);
-      return chooseKingWonder(state, chosen.id, true);
-    }
-    return {ok:true, nextPhase:"choose"};
+    pub.kingWonder = null;
+    const res = finalizeAfterTake(state);
+    res.markedCard = marked;
+    return res;
   }
 
   function chooseKingWonder(state, chosenId, _internal=false){
     const {pub} = state;
     const kw = pub.kingWonder;
-    if (!kw || kw.phase !== "choose") return {ok:false, msg:"No King Wonder choice is pending."};
+    if (!kw || kw.phase !== "finalChoice") return {ok:false, msg:"No Wonder final choice is pending."};
     if (pub.ended) return {ok:false, msg:"Game over."};
-    if (!kw.offeredIds.includes(chosenId)) return {ok:false, msg:"Invalid choice."};
-
-    const offerer = kw.offerer;
+    const delta = Number(chosenId);
+    if (![-1,0,1].includes(delta)) return {ok:false, msg:"Invalid final value choice."};
     const builder = kw.builder;
-    const card = removeCardById(pub.taken[offerer], chosenId);
-    if (!card) return {ok:false, msg:"Chosen card is no longer available."};
-    pub.taken[builder].push(card);
+    const wm = pub.wonderMark[builder];
+    if (!wm || !wm.cardId) return {ok:false, msg:"Missing marked card."};
 
+    wm.delta = delta;
+    wm.finalChoicePending = false;
     pub.kingWonder = null;
-    const res = finalizeAfterTake(state);
-    res.kingWonderTaken = card;
+    const allH = pub.taken[0];
+    const allA = pub.taken[1];
+    const sc = modernScoring(allH, allA, wonderModsFromState(pub));
+    pub.score.human += sc.human;
+    pub.score.ai += sc.ai;
+    pub.ended = true;
+    const res = {ok:true, endedGame:true, flipped:0};
+    res.kingWonderDelta = delta;
+    res.kingWonderCardId = wm.cardId;
     res._internal = _internal;
     return res;
   }
@@ -1510,24 +1556,28 @@ const Engine = (() => {
     const kw = pub.kingWonder;
     if (!kw) return finalizeAfterTake(state);
 
-    // Offer, if needed.
-    if (kw.phase === "offer"){
-      const offererCards = pub.taken[kw.offerer].filter(c=>c && c.kind!=="king");
-      const offered = pickOfferCardsAI(offererCards, kw.maxOffer, kw.reqModern);
-      kw.offeredIds = offered.map(c=>c.id);
-      kw.phase = "choose";
+    if (kw.phase === "mark"){
+      const ownCards = pub.taken[kw.builder].filter(c=>c && c.kind==="card");
+      if (!ownCards.length){
+        pub.kingWonder = null;
+        return finalizeAfterTake(state);
+      }
+      const chosen = pickBestFromOfferAI(ownCards);
+      return submitKingWonderOffer(state, [chosen.id]);
     }
 
-    const offererAll = pub.taken[kw.offerer];
-    const offeredCards = (kw.offeredIds||[]).map(id => offererAll.find(c=>c && c.id===id)).filter(Boolean);
-
-    if (!offeredCards.length){
-      pub.kingWonder = null;
-      return finalizeAfterTake(state);
+    if (kw.phase === "finalChoice"){
+      const scores = [-1,0,1].map(delta=>{
+        const tmp = (typeof structuredClone === "function") ? structuredClone(pub) : JSON.parse(JSON.stringify(pub));
+        tmp.wonderMark[kw.builder].delta = delta;
+        const t = totalScoring(tmp.taken[0], tmp.taken[1], wonderModsFromState(tmp));
+        return {delta, val: t.ai - t.human};
+      });
+      scores.sort((a,b)=>b.val-a.val || b.delta-a.delta);
+      return chooseKingWonder(state, scores[0].delta, true);
     }
 
-    const chosen = pickBestFromOfferAI(offeredCards);
-    return chooseKingWonder(state, chosen.id, true);
+    return finalizeAfterTake(state);
   }
 
   function take(state, idx){
@@ -1851,9 +1901,8 @@ function _cardsForIds(ids){
   return (ids||[]).map(_findCardById).filter(Boolean);
 }
 function _kingCtxKey(kw){
-  const a = kw.offeredIds ? kw.offeredIds.slice().join(",") : "";
   const b = kw.eligibleIds ? kw.eligibleIds.slice().join(",") : "";
-  return `${kw.phase}|${kw.builder}|${kw.offerer}|${kw.maxOffer}|${kw.reqModern}|${a}|${b}`;
+  return `${kw.phase}|${kw.builder}|${b}`;
 }
 function _modernCount(ids){
   let n = 0;
@@ -1879,24 +1928,22 @@ function syncKingOverlay(){
   openKingOverlay();
   if (!elKingTitle || !elKingMsg || !elKingReq || !elKingGrid || !btnKingConfirm) return;
 
-  const offererName = playerName(kw.offerer);
   const builderName = playerName(kw.builder);
 
-  if (kw.phase === "offer"){
-    elKingTitle.textContent = "King Wonder — Offer cards";
-    elKingMsg.innerHTML = `<b>${builderName}</b> has taken a third King. <b>${offererName}</b> must offer <b>${kw.maxOffer}</b> non-King card(s).`;
-    elKingReq.textContent = (kw.reqModern>0)
-      ? `Requirement: include exactly ${kw.reqModern} Modern card(s).`
-      : `Requirement: offer the maximum possible (no Modern non-King cards available).`;
+  if (kw.phase === "mark"){
+    elKingTitle.textContent = "King Wonder — Mark a card";
+    elKingMsg.innerHTML = `<b>${builderName}</b> has built the Wonder (3rd K). Mark <b>1</b> of ${builderName}'s non-King cards.`;
+    elKingReq.textContent = "The card can later be scored at value -1, base, or +1.";
 
     const cards = _cardsForIds(kw.eligibleIds);
     renderKingCards(cards, kw);
   } else {
-    elKingTitle.textContent = "King Wonder — Choose a card";
-    elKingMsg.innerHTML = `<b>${builderName}</b> has taken a third King. Choose <b>1</b> card from <b>${offererName}</b>'s offer.`;
-    elKingReq.textContent = "";
+    elKingTitle.textContent = "King Wonder — Final value choice";
+    elKingMsg.innerHTML = `<b>${builderName}</b>: choose the marked card final value modifier.`;
+    elKingReq.textContent = "Valid choices: -1, 0 (base), +1.";
 
-    const cards = _cardsForIds(kw.offeredIds);
+    const markedId = STATE.pub.wonderMark?.[kw.builder]?.cardId;
+    const cards = _cardsForIds(markedId ? [markedId] : []);
     renderKingCards(cards, kw);
   }
 }
@@ -1909,32 +1956,7 @@ function renderKingCards(cards, kw){
 
   function canSelect(card){
     if (KING_SELECTED.has(card.id)) return true; // always allow deselect
-    if (phase === "choose") return KING_SELECTED.size < 1;
-
-    // offer phase
-    const maxOffer = kw.maxOffer;
-    const reqModern = kw.reqModern;
-
-    if (KING_SELECTED.size >= maxOffer) return false;
-
-    const modSel = _modernCount(KING_SELECTED);
-    const remainingSlotsAfterPick = maxOffer - (KING_SELECTED.size + 1);
-
-    if (card.age === "modern"){
-      const modAfter = modSel + 1;
-      if (modAfter > reqModern) return false;
-      const needAfter = reqModern - modAfter;
-      if (needAfter > remainingSlotsAfterPick) return false;
-      return true;
-    } else {
-      const needAfter = reqModern - modSel;
-      if (needAfter > remainingSlotsAfterPick) return false;
-
-      const modRemaining = cards.filter(c => c.age==="modern" && !KING_SELECTED.has(c.id)).length;
-      if (needAfter > modRemaining) return false;
-
-      return true;
-    }
+    return KING_SELECTED.size < 1;
   }
 
   for (const c of cards){
@@ -1952,40 +1974,46 @@ function renderKingCards(cards, kw){
 
     const small = document.createElement("div");
     small.className = "small";
-    small.textContent = (c.kind==="king") ? "KING" : (c.age === "modern" ? "modern" : "ancient");
+    small.textContent = (phase === "mark")
+      ? ((c.age === "modern") ? "modern" : "ancient")
+      : "marked card";
 
     el.appendChild(small);
     el.appendChild(big);
 
     el.addEventListener("click", ()=>{
       if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
-      if (!selectable && !KING_SELECTED.has(c.id)) return;
+      if (phase === "mark"){
+        if (!selectable && !KING_SELECTED.has(c.id)) return;
+        if (KING_SELECTED.has(c.id)) KING_SELECTED.delete(c.id);
+        else KING_SELECTED.add(c.id);
+      } else {
+        const p = kw.builder;
+        const wm = STATE.pub.wonderMark[p];
+        const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+        wm.delta = (cur===-1) ? 0 : (cur===0 ? 1 : -1);
+      }
 
-      if (KING_SELECTED.has(c.id)) KING_SELECTED.delete(c.id);
-      else KING_SELECTED.add(c.id);
-
-      // Re-render to apply forced constraints and button state
+      // Re-render to apply button state
       syncKingOverlay();
     });
 
     elKingGrid.appendChild(el);
   }
 
-  const modSel = _modernCount(KING_SELECTED);
-  if (phase === "offer"){
-    btnKingConfirm.textContent = `Offer (${KING_SELECTED.size}/${kw.maxOffer})`;
-    const ok = (KING_SELECTED.size === kw.maxOffer) && (modSel === kw.reqModern);
-    btnKingConfirm.disabled = !ok;
-    if (elKingErr){
-      if (KING_SELECTED.size !== kw.maxOffer) elKingErr.textContent = `Select exactly ${kw.maxOffer} card(s).`;
-      else if (modSel !== kw.reqModern) elKingErr.textContent = `Select exactly ${kw.reqModern} Modern card(s).`;
-      else elKingErr.textContent = "";
-    }
-  } else {
-    btnKingConfirm.textContent = `Take (${KING_SELECTED.size}/1)`;
+  if (phase === "mark"){
+    btnKingConfirm.textContent = `Mark (${KING_SELECTED.size}/1)`;
     const ok = (KING_SELECTED.size === 1);
     btnKingConfirm.disabled = !ok;
-    if (elKingErr) elKingErr.textContent = ok ? "" : "Select exactly 1 card.";
+    if (elKingErr){
+      elKingErr.textContent = ok ? "" : "Select exactly 1 card to mark.";
+    }
+  } else {
+    const wm = STATE?.pub?.wonderMark?.[kw.builder];
+    const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+    btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
+    btnKingConfirm.disabled = false;
+    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1.";
   }
 }
 
@@ -2007,30 +2035,29 @@ if (btnKingConfirm) btnKingConfirm.addEventListener("click", ()=>{
   const kw = STATE.pub.kingWonder;
   const beforeAge = STATE.pub.age;
 
-  if (kw.phase === "offer"){
+  if (kw.phase === "mark"){
     const ids = [...KING_SELECTED];
-    const offeredText = ids.map(id => cardLabel(_findCardById(id))).filter(Boolean).join(", ");
+    const markedText = ids.map(id => cardLabel(_findCardById(id))).filter(Boolean).join(", ");
     const r = Engine.submitKingWonderOffer(STATE, ids);
     if (!r.ok){
-      if (elKingErr) elKingErr.textContent = r.msg || "Invalid offer.";
+      if (elKingErr) elKingErr.textContent = r.msg || "Invalid mark.";
       return;
     }
-    logLine(`King Wonder: Human offers ${offeredText || "(none)"}.`);
-    if (r.kingWonderTaken){
-      logLine(`King Wonder: AI takes ${cardLabel(r.kingWonderTaken)}.`);
-    }
+    logLine(`King Wonder: Human marks ${markedText || "(none)"}.`);
     logFinalize(r, beforeAge);
     render();
     maybeAIMove();
   } else {
-    const chosenId = [...KING_SELECTED][0];
-    const offeredText = (kw.offeredIds||[]).map(id=>cardLabel(_findCardById(id))).filter(Boolean).join(", ");
-    const r = Engine.chooseKingWonder(STATE, chosenId);
+    const p = kw.builder;
+    const wm = STATE.pub.wonderMark[p];
+    const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+    const r = Engine.chooseKingWonder(STATE, cur);
     if (!r.ok){
       if (elKingErr) elKingErr.textContent = r.msg || "Invalid choice.";
       return;
     }
-    logLine(`King Wonder: AI offered ${offeredText || "(none)"}. Human takes ${cardLabel(r.kingWonderTaken)}.`);
+    const c = _findCardById(r.kingWonderCardId);
+    logLine(`King Wonder: ${playerName(p)} final choice on ${cardLabel(c)} = ${r.kingWonderDelta>=0?`+${r.kingWonderDelta}`:String(r.kingWonderDelta)}.`);
     logFinalize(r, beforeAge);
     render();
     maybeAIMove();
@@ -2064,12 +2091,12 @@ btnEndNew.addEventListener("click", ()=>{
 });
 
 /* Build a readable score breakdown without touching the engine rules */
-function culturePointsDetail(hCards, aCards){
+function culturePointsDetail(hCards, aCards, wonderMods=null){
   // Culture is CONTESTED: across both players there are only two award tiers:
   // - +10 to the best straight (len ≥ 2)
   // - +5 to the second-best straight (next distinct tier, len ≥ 2)
   // In case of a tie on (len, high card), the tier is shared.
-  const res = cultureContestVP(hCards, aCards);
+  const res = cultureContestVP(hCards, aCards, wonderMods);
 
   const hTop = res.hRuns.slice(0,2);
   const aTop = res.aRuns.slice(0,2);
@@ -2100,6 +2127,10 @@ function culturePointsDetail(hCards, aCards){
 
 function computeFinalBreakdown(){
   const pub = STATE.pub;
+  const wonderMods = [0,1].map(p=>{
+    const wm = pub.wonderMark?.[p] || {};
+    return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+  });
 
   const allH = pub.taken[0].slice();
   const allA = pub.taken[1].slice();
@@ -2107,8 +2138,8 @@ function computeFinalBreakdown(){
   const aAnc = allA.filter(c=>c.age==="ancient");
 
   // Ancient (scored on Ancient-only cards)
-  const ancHS = sumSuit(hAnc,"S");
-  const ancAS = sumSuit(aAnc,"S");
+  const ancHS = sumSuit(hAnc,"S", wonderMods);
+  const ancAS = sumSuit(aAnc,"S", wonderMods);
   const ancMilH = (ancHS>ancAS) ? 4 : 0;
   const ancMilA = (ancAS>ancHS) ? 4 : 0;
   const ancPen5H = hasAllFourOfValue(hAnc,5) ? -3 : 0;
@@ -2117,18 +2148,18 @@ function computeFinalBreakdown(){
   const ancTotalA = ancMilA + ancPen5A;
 
   // Modern (scored on ALL collected cards, as per modernScoring())
-  const modHS = sumSuit(allH,"S");
-  const modAS = sumSuit(allA,"S");
+  const modHS = sumSuit(allH,"S", wonderMods);
+  const modAS = sumSuit(allA,"S", wonderMods);
   const modMilH = (modHS>modAS) ? 8 : 0;
   const modMilA = (modAS>modHS) ? 8 : 0;
 
-  const modFoodH = foodPoints(allH);
-  const modFoodA = foodPoints(allA);
+  const modFoodH = foodPoints(allH, wonderMods);
+  const modFoodA = foodPoints(allA, wonderMods);
 
-  const cult = culturePointsDetail(allH, allA);
+  const cult = culturePointsDetail(allH, allA, wonderMods);
 
-  const modTechH = techPoints(allH);
-  const modTechA = techPoints(allA);
+  const modTechH = techPoints(allH, wonderMods);
+  const modTechA = techPoints(allA, wonderMods);
 
   const modPen10H = hasAllFourOfValue(allH,10) ? -6 : 0;
   const modPen10A = hasAllFourOfValue(allA,10) ? -6 : 0;
@@ -2141,7 +2172,7 @@ function computeFinalBreakdown(){
 
   return {
     ancient: {mil:{h:ancMilH,a:ancMilA,hs:ancHS,as:ancAS}, pen5:{h:ancPen5H,a:ancPen5A}, total:{h:ancTotalH,a:ancTotalA}},
-    modern:  {mil:{h:modMilH,a:modMilA,hs:modHS,as:modAS}, food:{h:modFoodH,a:modFoodA,rawH:sumSuit(allH,"C"),rawA:sumSuit(allA,"C")}, culture:{...cult}, tech:{h:modTechH,a:modTechA}, pen10:{h:modPen10H,a:modPen10A}, total:{h:modTotalH,a:modTotalA}},
+    modern:  {mil:{h:modMilH,a:modMilA,hs:modHS,as:modAS}, food:{h:modFoodH,a:modFoodA,rawH:sumSuit(allH,"C", wonderMods),rawA:sumSuit(allA,"C", wonderMods)}, culture:{...cult}, tech:{h:modTechH,a:modTechA}, pen10:{h:modPen10H,a:modPen10A}, total:{h:modTotalH,a:modTotalA}},
     grand: {h:grandH,a:grandA}
   };
 }
@@ -2726,11 +2757,10 @@ function render(){
         if (r.pendingKingWonder){
           const kw = STATE.pub.kingWonder;
           if (kw){
-            if (kw.phase==="choose"){
-              const offered = (kw.offeredIds||[]).map(id=>cardLabel(_findCardById(id))).filter(Boolean).join(", ");
-              logLine(offered ? `King Wonder: AI offers ${offered}. Choose 1.` : "King Wonder: choose 1 card from AI's offer.");
+            if (kw.phase==="finalChoice"){
+              logLine(`King Wonder: ${playerName(kw.builder)} chooses final value for the marked card (-1/0/+1).`);
             } else {
-              logLine(`King Wonder: offer ${kw.maxOffer} card(s) (include ${kw.reqModern} Modern).`);
+              logLine(`King Wonder: ${playerName(kw.builder)} must mark 1 own non-King card.`);
             }
           }
         } else {
@@ -2800,7 +2830,10 @@ function maybeAIMove(){
 
         if (r.pendingKingWonder){
           const kw = STATE.pub.kingWonder;
-          if (kw) logLine(`King Wonder: offer ${kw.maxOffer} card(s) (include ${kw.reqModern} Modern).`);
+          if (kw){
+            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final value for the marked card (-1/0/+1).`);
+            else logLine(`King Wonder: ${playerName(kw.builder)} must mark 1 own non-King card.`);
+          }
         } else {
           if (r.flipped>0) logLine(`${r.flipped} card(s) revealed.`);
           if (r.endedAge && beforeAge==="ancient"){
