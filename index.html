@@ -1669,6 +1669,20 @@ function quickEval(publicView, perspective){
 }
 
 function enumerateMoves(publicView, player){
+  if (publicView.kingWonder){
+    const kw = publicView.kingWonder;
+    if (kw.builder !== player) return [{type:"pass"}];
+    if (kw.phase === "mark"){
+      const ids = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
+      if (ids.length===0) return [{type:"pass"}];
+      return ids.map(id => ({type:"kingMark", id}));
+    }
+    if (kw.phase === "finalChoice"){
+      return [-1,0,1].map(delta => ({type:"kingDelta", delta}));
+    }
+    return [{type:"pass"}];
+  }
+
   const moves = [];
   // Modern-start swap (only if the player is eligible)
   if (Engine.canUseModernSwap(publicView, player)) moves.push({type:"modernSwap"});
@@ -1791,6 +1805,14 @@ function aiMonteCarlo(state){
 }
 
 function applyAIMoveToSim(sim, mv){
+  if (mv.type==="kingMark"){
+    Engine.submitKingWonderOffer(sim, [mv.id]);
+    return;
+  }
+  if (mv.type==="kingDelta"){
+    Engine.chooseKingWonder(sim, mv.delta, true);
+    return;
+  }
   if (mv.type==="modernSwap"){
     // decide il secondo della Modern Age (AI = 1)
     Engine.useModernSwap(sim, 1);
@@ -1804,11 +1826,18 @@ function applyAIMoveToSim(sim, mv){
     Engine.take(sim, mv.idx);
     return;
   }
+  if (mv.type==="pass"){
+    sim.pub.picksLeftThisTurn = 1;
+    sim.pub.currentPlayer = 1 - sim.pub.currentPlayer;
+    return;
+  }
 }
 
 function playoutSim(sim){
   // Fast policy until the game ends.
-  while(!sim.pub.ended){
+  let guard = 0;
+  while(!sim.pub.ended && guard < 500){
+    guard++;
     const player = sim.pub.currentPlayer;
     const pv = Engine.getPublicView(sim);
     const moves = enumerateMoves(pv, player);
@@ -2849,6 +2878,31 @@ function maybeAIMove(){
       render();
       // se AI ha ancora una presa (Joker), continua
       if (STATE.pub.currentPlayer===1) maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="kingMark"){
+      const r = Engine.submitKingWonderOffer(STATE, [mv.id]);
+      if (!r.ok) logLine("AI (Wonder): " + r.msg);
+      render();
+      if (STATE.pub.currentPlayer===1) maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="kingDelta"){
+      const r = Engine.chooseKingWonder(STATE, mv.delta, true);
+      if (!r.ok) logLine("AI (Wonder): " + r.msg);
+      render();
+      if (STATE.pub.currentPlayer===1) maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="pass"){
+      STATE.pub.picksLeftThisTurn = 1;
+      STATE.pub.currentPlayer = 0;
+      logLine("AI passes (no legal actions). Turn to Human.");
+      render();
+      return;
     }
   }, 120);
 }
