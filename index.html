@@ -525,6 +525,7 @@ button.ghost{
     .suitSep{color: rgba(255,255,255,.25); margin: 0 4px;}
     .suitValues{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
     .chip.vp{border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.12); color: rgba(34,197,94,.92);}
+    .chip.marked{border-color: rgba(251,191,36,.72); background: rgba(251,191,36,.20); color: rgba(255,248,220,.98); box-shadow: inset 0 0 0 1px rgba(251,191,36,.26); font-weight:700;}
     .vpBadge{color: rgba(34,197,94,.92);}
 
 
@@ -2084,7 +2085,6 @@ function renderKingCards(cards, kw){
         const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
         wm.delta = (cur===-1) ? 0 : (cur===0 ? 1 : -1);
         syncKingOverlay();
-        if (btnKingConfirm && !btnKingConfirm.disabled) btnKingConfirm.click();
         return;
       }
 
@@ -2135,7 +2135,7 @@ function renderKingCards(cards, kw){
     const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
     btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
     btnKingConfirm.disabled = false;
-    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1 (it confirms automatically).";
+    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1, then press Confirm.";
   }
 }
 
@@ -2611,6 +2611,7 @@ function runTokens(values, dashMinLen, vpSelector=null){
 }
 
 function renderHands(){
+  const pub = STATE.pub;
   const h = STATE.pub.taken[0];
   const a = STATE.pub.taken[1];
 
@@ -2650,9 +2651,12 @@ function renderHands(){
   // Order requested: Military, Food, Technology, Culture
   const suits = ["S","C","H","D"];
 
-  const addChip = (parent, text, vp=false) => {
+  const addChip = (parent, text, opts={}) => {
+    const vp = !!opts.vp;
+    const marked = !!opts.marked;
     const chip = document.createElement("div");
     chip.className = vp ? "chip vp" : "chip";
+    if (marked) chip.classList.add("marked");
     chip.textContent = text;
     parent.appendChild(chip);
   };
@@ -2710,7 +2714,7 @@ function renderHands(){
         const key = isHuman ? hTechKey : aTechKey;
         const tokens = runTokens(vals, 3, key ? new Set([key]) : null);
         if (tokens.length===0) addChip(valuesEl, "—");
-        else for(const t of tokens) addChip(valuesEl, t.text, t.vp);
+        else for(const t of tokens) addChip(valuesEl, t.text, {vp:t.vp});
         row.appendChild(valuesEl);
       }
       else if (s === "D"){
@@ -2718,7 +2722,7 @@ function renderHands(){
         const vpKeys = isHuman ? hCultKeys : aCultKeys;
         const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
         if (tokens.length===0) addChip(valuesEl, "—");
-        else for(const t of tokens) addChip(valuesEl, t.text, t.vp);
+        else for(const t of tokens) addChip(valuesEl, t.text, {vp:t.vp});
         row.appendChild(valuesEl);
       }
 
@@ -2746,6 +2750,30 @@ function renderHands(){
     }
     kRow.appendChild(kVals);
     rootEl.appendChild(kRow);
+
+    const playerIndex = isHuman ? 0 : 1;
+    const wm = pub.wonderMark?.[playerIndex];
+    if (wm && wm.cardId){
+      const markedCard = cards.find(c=>c && c.id===wm.cardId);
+      if (markedCard){
+        const mRow = document.createElement("div");
+        mRow.className = "suitRow";
+
+        const mLabel = document.createElement("div");
+        mLabel.className = "suitLabel";
+        mLabel.textContent = "★ Marked:";
+        mRow.appendChild(mLabel);
+
+        const mVals = document.createElement("div");
+        mVals.className = "suitValues";
+        const delta = (typeof wm.delta === "number") ? wm.delta : 0;
+        const deltaText = delta===0 ? "0" : (delta>0 ? `+${delta}` : String(delta));
+        const pending = wm.finalChoicePending ? "(pending)" : `(final ${deltaText})`;
+        addChip(mVals, `${cardLabel(markedCard)} ${pending}`, {marked:true});
+        mRow.appendChild(mVals);
+        rootEl.appendChild(mRow);
+      }
+    }
   };
 
   buildRows(elHumanCards, h, true);
