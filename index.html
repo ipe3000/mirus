@@ -3079,7 +3079,7 @@ function render(){
 
       const small = document.createElement("div");
       small.className="small";
-      small.textContent = s.removed ? "" : (s.faceDown ? "" : (s.card && s.card.kind==="king" ? "WONDER" : (SUIT_ABBR[s.card.suit] || SUIT_NAME[s.card.suit] || "")));
+      small.textContent = s.removed ? "" : (s.faceDown ? "" : (s.card && s.card.kind==="king" ? "WOND" : (SUIT_ABBR[s.card.suit] || SUIT_NAME[s.card.suit] || "")));
 
       const cornerL = document.createElement("div");
       cornerL.className="cornerL";
