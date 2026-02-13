@@ -139,11 +139,50 @@
     .box p{margin:0; font-size: 13px; color: var(--muted); line-height:1.35}
     .cardsList{display:flex; flex-wrap:wrap; gap:6px; margin-top: 10px;}
 
-    .suitRows{display:flex; flex-direction:column; gap:8px; margin-top:10px;}
-    .suitRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
-    .suitLabel{min-width: 88px; font-size:12px; color: rgba(255,255,255,.72);}
+    .compareWrap{margin-top:4px;}
+    .compareTable{width:100%; border-collapse:separate; border-spacing:0 8px; table-layout:fixed;}
+    .compareTable th{font-size:12px; color:rgba(255,255,255,.72); text-align:left; padding:0 8px 4px; font-weight:650;}
+    .compareTable th:first-child{width:128px;}
+    .compareTable td{padding:0 8px; vertical-align:top;}
+
+    .catCell{
+      font-size:12px;
+      font-weight:700;
+      color:rgba(255,255,255,.92);
+      border-radius:10px;
+      padding:8px 9px;
+      border-left:4px solid transparent;
+      background:rgba(255,255,255,.03);
+      letter-spacing:.2px;
+      white-space:nowrap;
+    }
+    .catCell.suitS{ background: rgba(239,68,68,.14); border-left-color: rgba(239,68,68,.9); }
+    .catCell.suitC{ background: rgba(34,197,94,.14); border-left-color: rgba(34,197,94,.9); }
+    .catCell.suitH{ background: rgba(250,204,21,.14); border-left-color: rgba(250,204,21,.9); }
+    .catCell.suitD{ background: rgba(56,189,248,.14); border-left-color: rgba(56,189,248,.9); }
+    .catCell.wonders{ background: rgba(148,163,184,.14); border-left-color: rgba(148,163,184,.95); }
+
+    .battleCell{
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      padding:7px 8px;
+      min-height:56px;
+    }
+    .battleHead{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;}
+    .battleValue{font-size:15px; font-weight:760; line-height:1; color:rgba(255,255,255,.96);}
+    .deltaBadge{font-size:10px; font-weight:700; border-radius:999px; padding:2px 7px; border:1px solid rgba(255,255,255,.16); color:rgba(255,255,255,.84);}
+    .deltaBadge.up{border-color:rgba(34,197,94,.45); color:rgba(34,197,94,.95); background:rgba(34,197,94,.14);}
+    .deltaBadge.down{border-color:rgba(249,115,22,.45); color:rgba(253,186,116,.98); background:rgba(249,115,22,.14);}
+    .deltaBadge.tie{border-color:rgba(148,163,184,.45); color:rgba(226,232,240,.94); background:rgba(148,163,184,.14);}
+
+    .battleBar{height:5px; border-radius:999px; background:rgba(255,255,255,.12); overflow:hidden; margin-bottom:6px;}
+    .battleFill{height:100%; border-radius:inherit; background:linear-gradient(90deg, rgba(56,189,248,.95), rgba(99,102,241,.92)); transition:width .22s ease;}
+
+    .suitValues{display:flex; gap:5px; flex-wrap:wrap;}
 
     .chip{padding:4px 7px; border-radius: 999px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); font-size: 12px; color: rgba(255,255,255,.85);}
+    .chip.marked{border-color: rgba(250,204,21,.72); box-shadow: 0 0 0 1px rgba(250,204,21,.35) inset; background: rgba(250,204,21,.14); color: rgba(255,248,220,.98);}
     .log{
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size:12px; white-space: pre-wrap; line-height:1.25;
@@ -754,15 +793,17 @@ body.playing #wonderBtnSide{ display:inline-flex; }
         </div>
       </div>
       <div class="bd">
-        <div class="kv">
-          <div class="box">
-            <h3>Human cards</h3>
-                        <div class="cardsList" id="humanCards"></div>
-          </div>
-          <div class="box">
-            <h3>AI cards</h3>
-                        <div class="cardsList" id="aiCards"></div>
-          </div>
+        <div class="box compareWrap">
+          <table class="compareTable">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Human Cards</th>
+                <th>AI Cards</th>
+              </tr>
+            </thead>
+            <tbody id="compareBody"></tbody>
+          </table>
         </div>
         <div class="hr logInline"></div>
         <div class="box" id="logBox">
@@ -1931,8 +1972,7 @@ const elTurnPill = document.getElementById("turnPill");
 const elActionPill = document.getElementById("actionPill");
 const elScorePill = document.getElementById("scorePill");
 const elStatusLine = document.getElementById("statusLine");
-const elHumanCards = document.getElementById("humanCards");
-const elAiCards = document.getElementById("aiCards");
+const elCompareBody = document.getElementById("compareBody");
 const btnNew = document.getElementById("newGameBtn");
 const btnWonder = document.getElementById("wonderBtn");
 const btnWonderSide = document.getElementById("wonderBtnSide");
@@ -2641,16 +2681,11 @@ function runTokens(values, dashMinLen, vpSelector=null){
 
 function renderHands(){
   const pub = STATE.pub;
-  const h = STATE.pub.taken[0];
-  const a = STATE.pub.taken[1];
+  const h = pub.taken[0];
+  const a = pub.taken[1];
 
-  elHumanCards.innerHTML = "";
-  elAiCards.innerHTML = "";
+  elCompareBody.innerHTML = "";
 
-  elHumanCards.classList.add("suitRows");
-  elAiCards.classList.add("suitRows");
-
-  // Precompute contested Culture winners (so the highlights are consistent with scoring)
   const cult = cultureContestVP(h, a);
   const hCultKeys = new Set();
   const aCultKeys = new Set();
@@ -2677,9 +2712,6 @@ function renderHands(){
   const hTechKey = bestTechKey(h);
   const aTechKey = bestTechKey(a);
 
-  // Order requested: Military, Food, Technology, Culture
-  const suits = ["S","C","H","D"];
-
   const addChip = (parent, text, opts={}) => {
     const vp = !!opts.vp;
     const marked = !!opts.marked;
@@ -2690,123 +2722,175 @@ function renderHands(){
     parent.appendChild(chip);
   };
 
-  const buildRows = (rootEl, cards, isHuman) => {
-    for(const s of suits){
-      const row = document.createElement("div");
-      row.className = "suitRow";
-
-      const label = document.createElement("div");
-      label.className = "suitLabel";
-      label.textContent = `${SUIT_ICON[s]} ${SUIT_NAME[s]}:`;
-      row.appendChild(label);
-
-      const valuesEl = document.createElement("div");
-      valuesEl.className = "suitValues";
-
-      if (s === "S"){
-        const total = sumSuit(cards,"S");
-        const meta = document.createElement("span");
-        meta.className = "suitMeta";
-        meta.textContent = String(total);
-        const sep = document.createElement("span");
-        sep.className = "suitSep";
-        sep.textContent = "|";
-        row.appendChild(meta);
-        row.appendChild(sep);
-
-        const vals = suitValues(cards,"S");
-        if (vals.length===0) addChip(valuesEl, "—");
-        else for(const v of vals) addChip(valuesEl, valueLabel(v));
-
-        row.appendChild(valuesEl);
-      }
-      else if (s === "C"){
-        const total = sumSuit(cards,"C");
-        const vp = Math.floor(total/5);
-        const meta = document.createElement("span");
-        meta.className = "suitMeta";
-        meta.innerHTML = `${total} <span class="vpBadge">(${vp} VP)</span>`;
-        const sep = document.createElement("span");
-        sep.className = "suitSep";
-        sep.textContent = "|";
-        row.appendChild(meta);
-        row.appendChild(sep);
-
-        const vals = suitValues(cards,"C");
-        if (vals.length===0) addChip(valuesEl, "—");
-        else for(const v of vals) addChip(valuesEl, valueLabel(v));
-
-        row.appendChild(valuesEl);
-      }
-      else if (s === "H"){
-        const vals = suitValues(cards,"H");
-        const key = isHuman ? hTechKey : aTechKey;
-        const tokens = runTokens(vals, 3, key ? new Set([key]) : null);
-        if (tokens.length===0) addChip(valuesEl, "—");
-        else for(const t of tokens) addChip(valuesEl, t.text, {vp:t.vp});
-        row.appendChild(valuesEl);
-      }
-      else if (s === "D"){
-        const vals = suitValues(cards,"D");
-        const vpKeys = isHuman ? hCultKeys : aCultKeys;
-        const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
-        if (tokens.length===0) addChip(valuesEl, "—");
-        else for(const t of tokens) addChip(valuesEl, t.text, {vp:t.vp});
-        row.appendChild(valuesEl);
-      }
-
-      rootEl.appendChild(row);
-    }
-
-    // Kings / Wonders row
-    const kings = cards.filter(c=>c && c.kind==="king");
-    const kRow = document.createElement("div");
-    kRow.className = "suitRow";
-
-    const kLabel = document.createElement("div");
-    kLabel.className = "suitLabel";
-    kLabel.textContent = `♔ Wonders:`;
-    kRow.appendChild(kLabel);
-
-    const kVals = document.createElement("div");
-    kVals.className = "suitValues";
-    if (kings.length===0) addChip(kVals, "—");
-    else{
-      // Stable order: ♠ ♦ ♥ ♣
-      const order = {S:0, D:1, H:2, C:3};
-      kings.sort((x,y)=> (order[x.suit]-order[y.suit]));
-      for (const k of kings) addChip(kVals, cardLabel(k));
-    }
-    kRow.appendChild(kVals);
-    rootEl.appendChild(kRow);
-
-    const playerIndex = isHuman ? 0 : 1;
-    const wm = pub.wonderMark?.[playerIndex];
-    if (wm && wm.cardId){
-      const markedCard = cards.find(c=>c && c.id===wm.cardId);
-      if (markedCard){
-        const mRow = document.createElement("div");
-        mRow.className = "suitRow";
-
-        const mLabel = document.createElement("div");
-        mLabel.className = "suitLabel";
-        mLabel.textContent = "★ Marked:";
-        mRow.appendChild(mLabel);
-
-        const mVals = document.createElement("div");
-        mVals.className = "suitValues";
-        const delta = (typeof wm.delta === "number") ? wm.delta : 0;
-        const deltaText = delta===0 ? "0" : (delta>0 ? `+${delta}` : String(delta));
-        const pending = wm.finalChoicePending ? "(pending)" : `(final ${deltaText})`;
-        addChip(mVals, `${cardLabel(markedCard)} ${pending}`, {marked:true});
-        mRow.appendChild(mVals);
-        rootEl.appendChild(mRow);
-      }
-    }
+  const asPct = (v, other) => {
+    const den = Math.max(1, v + other);
+    return Math.max(8, Math.round((v / den) * 100));
   };
 
-  buildRows(elHumanCards, h, true);
-  buildRows(elAiCards, a, false);
+  const buildSuitData = (cards, suit, isHuman) => {
+    const wm = pub.wonderMark?.[isHuman ? 0 : 1];
+    const markedCard = wm && wm.cardId ? cards.find(c=>c && c.id===wm.cardId) : null;
+
+    if (suit === "S"){
+      const vals = suitValues(cards,"S");
+      const total = sumSuit(cards,"S");
+      return { score: total, headline: String(total), chips: vals.map(valueLabel), markedCard };
+    }
+    if (suit === "C"){
+      const vals = suitValues(cards,"C");
+      const total = sumSuit(cards,"C");
+      const vp = Math.floor(total/5);
+      return { score: total, headline: `${total} (${vp} VP)`, chips: vals.map(valueLabel), markedCard };
+    }
+    if (suit === "H"){
+      const vals = suitValues(cards,"H");
+      const key = isHuman ? hTechKey : aTechKey;
+      const tokens = runTokens(vals, 3, key ? new Set([key]) : null);
+      let score = 0;
+      for (const t of tokens){ if (t.vp){ score = Math.max(score, t.text.split("-").length); } }
+      return { score, headline: score>0 ? `best run ${score}` : "best run 0", tokens, markedCard };
+    }
+
+    const vals = suitValues(cards,"D");
+    const vpKeys = isHuman ? hCultKeys : aCultKeys;
+    const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
+    let score = 0;
+    for (const t of tokens){ if (t.vp){ score = Math.max(score, t.text.split("-").length); } }
+    return { score, headline: score>0 ? `best run ${score}` : "best run 0", tokens, markedCard };
+  };
+
+  const renderBattleCell = (td, own, opp, suit) => {
+    const cell = document.createElement("div");
+    cell.className = "battleCell";
+
+    const head = document.createElement("div");
+    head.className = "battleHead";
+
+    const value = document.createElement("div");
+    value.className = "battleValue";
+    value.textContent = own.headline;
+
+    const delta = document.createElement("span");
+    delta.className = "deltaBadge";
+    const diff = own.score - opp.score;
+    if (diff > 0){ delta.classList.add("up"); delta.textContent = `+${diff}`; }
+    else if (diff < 0){ delta.classList.add("down"); delta.textContent = `${diff}`; }
+    else { delta.classList.add("tie"); delta.textContent = "="; }
+
+    head.appendChild(value);
+    head.appendChild(delta);
+    cell.appendChild(head);
+
+    const bar = document.createElement("div");
+    bar.className = "battleBar";
+    const fill = document.createElement("div");
+    fill.className = "battleFill";
+    fill.style.width = `${asPct(own.score, opp.score)}%`;
+    bar.appendChild(fill);
+    cell.appendChild(bar);
+
+    const values = document.createElement("div");
+    values.className = "suitValues";
+    if (own.tokens){
+      if (own.tokens.length===0) addChip(values, "—");
+      else for (const t of own.tokens) addChip(values, t.text, {vp:t.vp});
+    } else {
+      const chips = own.chips || [];
+      if (chips.length===0) addChip(values, "—");
+      else for (const c of chips) addChip(values, c);
+    }
+
+    if (own.markedCard && own.markedCard.suit === suit){
+      const wm = pub.wonderMark?.[own===hData[suit] ? 0 : 1];
+      const deltaVal = (typeof wm?.delta === "number") ? wm.delta : 0;
+      const deltaText = deltaVal===0 ? "0" : (deltaVal>0 ? `+${deltaVal}` : String(deltaVal));
+      const stateText = wm?.finalChoicePending ? "pending" : `final ${deltaText}`;
+      addChip(values, `★ ${cardLabel(own.markedCard)} (${stateText})`, {marked:true});
+    }
+
+    cell.appendChild(values);
+    td.appendChild(cell);
+  };
+
+  const suits = [
+    { key:"S", label:"♠ Military", cls:"suitS" },
+    { key:"C", label:"♣ Food", cls:"suitC" },
+    { key:"H", label:"♥ Technology", cls:"suitH" },
+    { key:"D", label:"♦ Culture", cls:"suitD" }
+  ];
+
+  const hData = {};
+  const aData = {};
+  for (const s of suits){
+    hData[s.key] = buildSuitData(h, s.key, true);
+    aData[s.key] = buildSuitData(a, s.key, false);
+  }
+
+  for (const s of suits){
+    const tr = document.createElement("tr");
+
+    const labelTd = document.createElement("td");
+    const cat = document.createElement("div");
+    cat.className = `catCell ${s.cls}`;
+    cat.textContent = s.label;
+    labelTd.appendChild(cat);
+
+    const humanTd = document.createElement("td");
+    renderBattleCell(humanTd, hData[s.key], aData[s.key], s.key);
+
+    const aiTd = document.createElement("td");
+    renderBattleCell(aiTd, aData[s.key], hData[s.key], s.key);
+
+    tr.appendChild(labelTd);
+    tr.appendChild(humanTd);
+    tr.appendChild(aiTd);
+    elCompareBody.appendChild(tr);
+  }
+
+  const tr = document.createElement("tr");
+  const labelTd = document.createElement("td");
+  const cat = document.createElement("div");
+  cat.className = "catCell wonders";
+  cat.textContent = "♔ Wonders";
+  labelTd.appendChild(cat);
+
+  const humanTd = document.createElement("td");
+  const aiTd = document.createElement("td");
+
+  const buildWondersCell = (td, cards) => {
+    const cell = document.createElement("div");
+    cell.className = "battleCell";
+    const head = document.createElement("div");
+    head.className = "battleHead";
+    const value = document.createElement("div");
+    value.className = "battleValue";
+    const kings = cards.filter(c=>c && c.kind==="king");
+    value.textContent = String(kings.length);
+    const badge = document.createElement("span");
+    badge.className = "deltaBadge tie";
+    badge.textContent = "kings";
+    head.appendChild(value);
+    head.appendChild(badge);
+    cell.appendChild(head);
+
+    const values = document.createElement("div");
+    values.className = "suitValues";
+    if (kings.length===0) addChip(values, "—");
+    else {
+      const order = {S:0, D:1, H:2, C:3};
+      kings.sort((x,y)=> (order[x.suit]-order[y.suit]));
+      for (const k of kings) addChip(values, cardLabel(k));
+    }
+    cell.appendChild(values);
+    td.appendChild(cell);
+  };
+
+  buildWondersCell(humanTd, h);
+  buildWondersCell(aiTd, a);
+  tr.appendChild(labelTd);
+  tr.appendChild(humanTd);
+  tr.appendChild(aiTd);
+  elCompareBody.appendChild(tr);
 }
 
 function render(){
@@ -2817,6 +2901,7 @@ function render(){
   if (!STATE){
     elStatusLine.textContent="Press “New game”.";
     elTableau.innerHTML="";
+    if (elCompareBody) elCompareBody.innerHTML = "";
     if (btnWonderSide) btnWonderSide.disabled = true;
     return;
   }
