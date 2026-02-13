@@ -760,6 +760,28 @@ body.playing #wonderBtnSide{ display:inline-flex; }
   .battleValue{ font-size: 13px; }
   .suitValues{ gap: 3px; }
 }
+
+/* === Mobile layout: decouple tableau and taken-cards heights === */
+@media (max-width: 980px){
+  .grid{
+    grid-template-rows: auto auto !important;
+    height: auto;
+    min-height: 0;
+    align-content: start;
+  }
+  .grid > .tableauPanel,
+  .grid > aside.panel{
+    height: auto !important;
+    max-height: none;
+    min-height: 0;
+    align-self: start;
+  }
+  .tableauPanel .bd,
+  .tableauPanel .tableau{
+    flex: 0 0 auto;
+  }
+}
+
 </style>
 </head>
 <body>
