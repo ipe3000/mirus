@@ -730,6 +730,36 @@ body.playing #wonderBtnSide{ display:inline-flex; }
   #kingOverlay .kingErr{ margin-top: 4px; min-height: 12px; }
   .kingActions{ padding-top: 6px; }
 }
+
+
+/* === Mobile fit tweak: keep tableau minimal + compact compare box === */
+@media (max-width: 980px){
+  .grid{
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .tableauPanel{
+    align-self: start;
+  }
+  .tableauPanel .hd{ padding: 6px 8px; }
+  .tableauPanel .bd{ padding: 4px 6px; }
+
+  .compareWrap{
+    margin-top: 0;
+    padding: 5px;
+    border-radius: 10px;
+  }
+  .compareTable{ border-spacing: 0 4px; }
+  .compareTable th{ font-size: 10px; padding: 0 4px 2px; }
+  .compareTable th:first-child{ width: 92px; }
+  .compareTable td{ padding: 0 4px; }
+  .catCell{ font-size: 10px; padding: 5px 6px; border-left-width: 3px; }
+  .battleCell{ min-height: 40px; padding: 5px 6px; }
+  .battleHead{ margin-bottom: 3px; }
+  .battleValue{ font-size: 13px; }
+  .suitValues{ gap: 3px; }
+}
 </style>
 </head>
 <body>
