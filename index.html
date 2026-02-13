@@ -145,6 +145,12 @@
     .compareTable th:first-child{width:128px;}
     .compareTable td{padding:0 8px; vertical-align:top;}
 
+    .compareRow.suitS td .battleCell{ background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.24); }
+    .compareRow.suitC td .battleCell{ background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.24); }
+    .compareRow.suitH td .battleCell{ background: rgba(250,204,21,.10); border-color: rgba(250,204,21,.24); }
+    .compareRow.suitD td .battleCell{ background: rgba(56,189,248,.10); border-color: rgba(56,189,248,.24); }
+    .compareRow.wonders td .battleCell{ background: rgba(148,163,184,.08); border-color: rgba(148,163,184,.24); }
+
     .catCell{
       font-size:12px;
       font-weight:700;
@@ -171,13 +177,6 @@
     }
     .battleHead{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;}
     .battleValue{font-size:15px; font-weight:760; line-height:1; color:rgba(255,255,255,.96);}
-    .deltaBadge{font-size:10px; font-weight:700; border-radius:999px; padding:2px 7px; border:1px solid rgba(255,255,255,.16); color:rgba(255,255,255,.84);}
-    .deltaBadge.up{border-color:rgba(34,197,94,.45); color:rgba(34,197,94,.95); background:rgba(34,197,94,.14);}
-    .deltaBadge.down{border-color:rgba(249,115,22,.45); color:rgba(253,186,116,.98); background:rgba(249,115,22,.14);}
-    .deltaBadge.tie{border-color:rgba(148,163,184,.45); color:rgba(226,232,240,.94); background:rgba(148,163,184,.14);}
-
-    .battleBar{height:5px; border-radius:999px; background:rgba(255,255,255,.12); overflow:hidden; margin-bottom:6px;}
-    .battleFill{height:100%; border-radius:inherit; background:linear-gradient(90deg, rgba(56,189,248,.95), rgba(99,102,241,.92)); transition:width .22s ease;}
 
     .suitValues{display:flex; gap:5px; flex-wrap:wrap;}
 
@@ -2722,11 +2721,6 @@ function renderHands(){
     parent.appendChild(chip);
   };
 
-  const asPct = (v, other) => {
-    const den = Math.max(1, v + other);
-    return Math.max(8, Math.round((v / den) * 100));
-  };
-
   const buildSuitData = (cards, suit, isHuman) => {
     const wm = pub.wonderMark?.[isHuman ? 0 : 1];
     const markedCard = wm && wm.cardId ? cards.find(c=>c && c.id===wm.cardId) : null;
@@ -2746,48 +2740,28 @@ function renderHands(){
       const vals = suitValues(cards,"H");
       const key = isHuman ? hTechKey : aTechKey;
       const tokens = runTokens(vals, 3, key ? new Set([key]) : null);
-      let score = 0;
-      for (const t of tokens){ if (t.vp){ score = Math.max(score, t.text.split("-").length); } }
-      return { score, headline: score>0 ? `best run ${score}` : "best run 0", tokens, markedCard };
+      return { tokens, markedCard };
     }
 
     const vals = suitValues(cards,"D");
     const vpKeys = isHuman ? hCultKeys : aCultKeys;
     const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
-    let score = 0;
-    for (const t of tokens){ if (t.vp){ score = Math.max(score, t.text.split("-").length); } }
-    return { score, headline: score>0 ? `best run ${score}` : "best run 0", tokens, markedCard };
+    return { tokens, markedCard };
   };
 
-  const renderBattleCell = (td, own, opp, suit) => {
+  const renderBattleCell = (td, own, suit) => {
     const cell = document.createElement("div");
     cell.className = "battleCell";
 
-    const head = document.createElement("div");
-    head.className = "battleHead";
-
-    const value = document.createElement("div");
-    value.className = "battleValue";
-    value.textContent = own.headline;
-
-    const delta = document.createElement("span");
-    delta.className = "deltaBadge";
-    const diff = own.score - opp.score;
-    if (diff > 0){ delta.classList.add("up"); delta.textContent = `+${diff}`; }
-    else if (diff < 0){ delta.classList.add("down"); delta.textContent = `${diff}`; }
-    else { delta.classList.add("tie"); delta.textContent = "="; }
-
-    head.appendChild(value);
-    head.appendChild(delta);
-    cell.appendChild(head);
-
-    const bar = document.createElement("div");
-    bar.className = "battleBar";
-    const fill = document.createElement("div");
-    fill.className = "battleFill";
-    fill.style.width = `${asPct(own.score, opp.score)}%`;
-    bar.appendChild(fill);
-    cell.appendChild(bar);
+    if (own.headline){
+      const head = document.createElement("div");
+      head.className = "battleHead";
+      const value = document.createElement("div");
+      value.className = "battleValue";
+      value.textContent = own.headline;
+      head.appendChild(value);
+      cell.appendChild(head);
+    }
 
     const values = document.createElement("div");
     values.className = "suitValues";
@@ -2828,6 +2802,7 @@ function renderHands(){
 
   for (const s of suits){
     const tr = document.createElement("tr");
+    tr.className = `compareRow ${s.cls}`;
 
     const labelTd = document.createElement("td");
     const cat = document.createElement("div");
@@ -2836,10 +2811,10 @@ function renderHands(){
     labelTd.appendChild(cat);
 
     const humanTd = document.createElement("td");
-    renderBattleCell(humanTd, hData[s.key], aData[s.key], s.key);
+    renderBattleCell(humanTd, hData[s.key], s.key);
 
     const aiTd = document.createElement("td");
-    renderBattleCell(aiTd, aData[s.key], hData[s.key], s.key);
+    renderBattleCell(aiTd, aData[s.key], s.key);
 
     tr.appendChild(labelTd);
     tr.appendChild(humanTd);
@@ -2848,10 +2823,11 @@ function renderHands(){
   }
 
   const tr = document.createElement("tr");
+  tr.className = "compareRow wonders";
   const labelTd = document.createElement("td");
   const cat = document.createElement("div");
   cat.className = "catCell wonders";
-  cat.textContent = "♔ Wonders";
+  cat.textContent = "K Wonders";
   labelTd.appendChild(cat);
 
   const humanTd = document.createElement("td");
@@ -2860,18 +2836,7 @@ function renderHands(){
   const buildWondersCell = (td, cards) => {
     const cell = document.createElement("div");
     cell.className = "battleCell";
-    const head = document.createElement("div");
-    head.className = "battleHead";
-    const value = document.createElement("div");
-    value.className = "battleValue";
     const kings = cards.filter(c=>c && c.kind==="king");
-    value.textContent = String(kings.length);
-    const badge = document.createElement("span");
-    badge.className = "deltaBadge tie";
-    badge.textContent = "kings";
-    head.appendChild(value);
-    head.appendChild(badge);
-    cell.appendChild(head);
 
     const values = document.createElement("div");
     values.className = "suitValues";
