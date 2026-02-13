@@ -998,9 +998,13 @@ body.playing #wonderBtnSide{ display:inline-flex; }
    ============================================================ */
 
 // As requested: you can change these values and experiment.
-const MC_SIMS = 100;              // simulations per move (Monte Carlo)
 const MC_PLAYOUT = "greedy";      // "greedy" or "random"
 const JOKER_SWAP_GRANTS_DOUBLE = false; // Modern start: using the Joker to become first also grants 2 picks? (default: no)
+
+// Adaptive Monte Carlo budget: fewer sims in the first turns of each age, more later.
+const MC_ADAPTIVE_EARLY_TURNS = 5;
+const MC_SIMS_EARLY = 60;
+const MC_SIMS_LATE = 120;
 
 /* ============================================================
    1) TABLEAU STRUCTURE (Mirus 2.0)
@@ -1962,13 +1966,13 @@ function aiMonteCarlo(state){
   const pv = Engine.getPublicView(state);
   const moves = enumerateMoves(pv, 1);
   let best = moves[0], bestVal = -1e9;
+  const sims = adaptiveMCSimsForAge(pv);
 
   // unknown pool: list of card.id (of the current age) that are not known to the AI
   const poolIds = Engine.unknownPoolForAI(pv);
 
   for(const mv of moves){
     let acc = 0;
-    const sims = MC_SIMS;
     for(let k=0;k<sims;k++){
       const sim = cloneEngineStateForSim(state);
 
@@ -2007,6 +2011,13 @@ function aiMonteCarlo(state){
     if (exp > bestVal){ bestVal = exp; best = mv; }
   }
   return best;
+}
+
+function adaptiveMCSimsForAge(publicView){
+  const age = publicView.age;
+  const takenInAge = publicView.taken[0].concat(publicView.taken[1]).filter(c => c.age===age).length;
+  if (takenInAge < MC_ADAPTIVE_EARLY_TURNS) return MC_SIMS_EARLY;
+  return MC_SIMS_LATE;
 }
 
 function applyAIMoveToSim(sim, mv){
