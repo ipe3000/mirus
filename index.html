@@ -3012,7 +3012,8 @@ function render(){
   elAgePill.textContent = (pub.age==="ancient") ? "Ancient Age" : "Modern Age";
   elTurnPill.textContent = "Turn: " + playerName(pub.currentPlayer);
   elTurnPill.classList.toggle("turn-ai", pub.currentPlayer===1 && !pub.ended);
-  elActionPill.textContent = "Picks left: " + pub.picksLeftThisTurn;
+  const aiLeaderStatus = pub.jokerUsed[1] ? "Used" : "Not Used";
+  elActionPill.textContent = "AI Leader: " + aiLeaderStatus;
   elScorePill.textContent = `Score: Human ${pub.score.human} VP – AI ${pub.score.ai} VP`;
 
   // End-of-game UI (presentation only)
