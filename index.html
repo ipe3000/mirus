@@ -2563,7 +2563,7 @@ function fitTableau(){
     // Keep it usable but allow shrinking for tiny screens.
     // Max size scales slightly with viewport width (more relative to device size).
     const viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-    const maxCardW = (viewportW <= 420) ? 86 : (viewportW <= 540 ? 90 : 94);
+    const maxCardW = (viewportW <= 420) ? 92 : (viewportW <= 540 ? 96 : 94);
     cardW = clamp(cardW, 38, maxCardW);
 
     // Scale gaps with the card size, then recompute with scaled gaps
