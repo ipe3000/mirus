@@ -2560,8 +2560,11 @@ function fitTableau(){
     const wByHeight_1 = hByHeight_1 / ratio;
 
     let cardW = Math.floor(Math.min(wByWidth_1, wByHeight_1));
-    // Keep it usable but allow shrinking for tiny screens
-    cardW = clamp(cardW, 38, 84);
+    // Keep it usable but allow shrinking for tiny screens.
+    // Max size scales slightly with viewport width (more relative to device size).
+    const viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const maxCardW = (viewportW <= 420) ? 86 : (viewportW <= 540 ? 90 : 94);
+    cardW = clamp(cardW, 38, maxCardW);
 
     // Scale gaps with the card size, then recompute with scaled gaps
     const scale = clamp(cardW / 72, 0.55, 1.15);
@@ -2573,7 +2576,7 @@ function fitTableau(){
     const wByHeight_2 = hByHeight_2 / ratio;
 
     cardW = Math.floor(Math.min(wByWidth_2, wByHeight_2));
-    cardW = clamp(cardW, 38, 84);
+    cardW = clamp(cardW, 38, maxCardW);
 
     const cardH = Math.round(cardW * ratio);
     const rad = clamp(Math.round(cardW * 0.19), 10, 18);
