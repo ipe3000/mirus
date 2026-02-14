@@ -146,39 +146,13 @@
   }
 
   function chooseForPlayer(state, player, level){
+    if (typeof Core.chooseMoveForPlayer === "function"){
+      return Core.chooseMoveForPlayer(state, player, {level});
+    }
+
     const pv = Core.Engine.getPublicView(state);
     const moves = Core.enumerateMoves(pv, player);
-    if (moves.length <= 1) return moves[0];
-
-    if (level === "random") return moves[Math.floor(Math.random() * moves.length)];
-
-    let best = moves[0], bestScore = -1e15;
-    for (const mv of moves){
-      const sim = Core.cloneEngineStateForSim(state);
-      applyMove(sim, player, mv);
-      const next = Core.Engine.getPublicView(sim);
-      const perspectiveEval = Core.quickEval(next, player);
-      const scoreDelta = sim.pub.score[player] - sim.pub.score[1-player];
-      const score = perspectiveEval + scoreDelta;
-      if (score > bestScore){ bestScore = score; best = mv; }
-    }
-
-    if (level === "greedy") return best;
-
-    const candidates = [];
-    for (const mv of moves){
-      let acc = 0;
-      const sims = 10;
-      for (let i=0;i<sims;i++){
-        const sim = Core.cloneEngineStateForSim(state);
-        applyMove(sim, player, mv);
-        playout(sim, "greedy", "greedy");
-        acc += (sim.pub.score[player] - sim.pub.score[1-player]);
-      }
-      candidates.push({mv, score: acc/sims});
-    }
-    candidates.sort((a,b)=>b.score-a.score);
-    return candidates[0].mv;
+    return moves.length ? moves[0] : null;
   }
 
   function applyMove(state, player, mv){
