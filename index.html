@@ -987,6 +987,7 @@ body.playing #wonderBtnSide{ display:inline-flex; }
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;">
       <div>
         <div style="font-weight:750; letter-spacing:.2px; font-size: 15px;">Game over</div>
+        <div id="endWinnerLine" style="color: rgba(255,255,255,.96); font-size: 16px; font-weight:750; margin-top:4px;">—</div>
         <div id="endScoreLine" style="color: rgba(229,231,235,.86); font-size: 13px; margin-top:2px;">—</div>
       </div>
       <button id="endCloseBtn" aria-label="Close results">Close</button>
@@ -2383,6 +2384,7 @@ if (btnKingDeltaPlus) btnKingDeltaPlus.addEventListener("click", ()=>setKingDelt
 
 const elEnd = document.getElementById("endOverlay");
 const elEndBody = document.getElementById("endBody");
+const elEndWinnerLine = document.getElementById("endWinnerLine");
 const elEndScoreLine = document.getElementById("endScoreLine");
 const btnEndClose = document.getElementById("endCloseBtn");
 const btnEndNew = document.getElementById("endNewBtn");
@@ -2514,15 +2516,16 @@ function renderEndOverlay(){
     else if (tieOwner===1) winner = "AI";
   }
 
+  const winnerText = winner==="Human" ? "Player wins" : (winner==="AI" ? "AI wins" : "Draw");
+  elEndWinnerLine.textContent = winnerText;
   elEndScoreLine.textContent = `Final: Human ${h} – AI ${a} (${winner})`;
 
-  const anc = bd.ancient, mod = bd.modern, wonder = bd.wonder;
+  const anc = bd.ancient, mod = bd.modern;
   const rowStyle = {
     s: "background: rgba(239,68,68,.10); border-left: 3px solid rgba(239,68,68,.88);",
     c: "background: rgba(34,197,94,.10); border-left: 3px solid rgba(34,197,94,.88);",
     d: "background: rgba(56,189,248,.11); border-left: 3px solid rgba(56,189,248,.90);",
-    h: "background: rgba(250,204,21,.13); border-left: 3px solid rgba(250,204,21,.88);",
-    w: "background: rgba(168,85,247,.12); border-left: 3px solid rgba(168,85,247,.92);"
+    h: "background: rgba(250,204,21,.13); border-left: 3px solid rgba(250,204,21,.88);"
   };
   const row = (label, hh, aa, style)=>`
     <tr style="${style}">
@@ -2549,7 +2552,6 @@ function renderEndOverlay(){
           ${row("♥ Tecnologia", mod.tech.h, mod.tech.a, rowStyle.h)}
           ${row("♦ Cultura", mod.culture.h, mod.culture.a, rowStyle.d)}
           ${row("♣ Cibo", mod.food.h, mod.food.a, rowStyle.c)}
-          ${row("👑 Wonder", wonder.h, wonder.a, rowStyle.w)}
         </tbody>
       </table>
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12);">
