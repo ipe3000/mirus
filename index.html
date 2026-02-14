@@ -1929,6 +1929,33 @@ function aiChoose(state, options={}){
   return aiMonteCarlo(state, deadline);
 }
 
+function mirrorStateForPlayerZero(state){
+  const mirrored = cloneEngineStateForSim(state);
+
+  mirrored.pub.currentPlayer = 1 - mirrored.pub.currentPlayer;
+  mirrored.pub.ancientSecondPlayer = 1 - mirrored.pub.ancientSecondPlayer;
+  mirrored.pub.jokerUsed = [mirrored.pub.jokerUsed[1], mirrored.pub.jokerUsed[0]];
+  mirrored.pub.wonderMark = [mirrored.pub.wonderMark[1], mirrored.pub.wonderMark[0]];
+  mirrored.pub.taken = [mirrored.pub.taken[1], mirrored.pub.taken[0]];
+  mirrored.pub.score = {human: mirrored.pub.score.ai, ai: mirrored.pub.score.human};
+
+  if (mirrored.pub.kingWonder){
+    mirrored.pub.kingWonder.builder = 1 - mirrored.pub.kingWonder.builder;
+  }
+
+  return mirrored;
+}
+
+function chooseMoveForPlayer(state, player, options={}){
+  const level = options.level || "mc";
+  const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
+  if (player===1) return aiChoose(state, {level, deadline});
+  if (player!==0) return null;
+
+  const mirrored = mirrorStateForPlayerZero(state);
+  return aiChoose(mirrored, {level, deadline});
+}
+
 function aiFastHeuristic(state){
   const pv = Engine.getPublicView(state);
   const moves = enumerateMoves(pv, 1);
@@ -3361,6 +3388,7 @@ scheduleFitTableau();
 window.MirusCore = {
   Engine,
   aiChoose,
+  chooseMoveForPlayer,
   enumerateMoves,
   quickEval,
   cloneEngineStateForSim,
