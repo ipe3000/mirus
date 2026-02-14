@@ -1008,6 +1008,7 @@ const MC_ADAPTIVE_EARLY_TURNS = 6;
 const MC_SIMS_OPENING = 24;
 const MC_SIMS_EARLY = 52;
 const MC_SIMS_LATE = 110;
+const AI_MOVE_MAX_MS = 3000;
 
 /* ============================================================
    1) TABLEAU STRUCTURE (Mirus 2.0)
@@ -1913,11 +1914,12 @@ function enumerateMoves(publicView, player){
   return moves;
 }
 
-function aiChoose(state){
+function aiChoose(state, options={}){
+  const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
   const level = document.getElementById("aiLevel").value;
   if (level==="random") return aiRandom(state);
   if (level==="greedy") return aiGreedy(state);
-  return aiMonteCarlo(state);
+  return aiMonteCarlo(state, deadline);
 }
 
 function aiRandom(state){
@@ -1965,19 +1967,29 @@ function cloneEngineStateForSim(state){
   return sim;
 }
 
-function aiMonteCarlo(state){
+function aiMonteCarlo(state, deadline=Infinity){
   const pv = Engine.getPublicView(state);
   const moves = enumerateMoves(pv, 1);
   if (moves.length <= 1) return moves[0];
-  let best = moves[0], bestVal = -1e9;
   const sims = adaptiveMCSimsForAge(pv);
+  const acc = Array(moves.length).fill(0);
+  const counts = Array(moves.length).fill(0);
 
   // unknown pool: list of card.id (of the current age) that are not known to the AI
   const poolIds = Engine.unknownPoolForAI(pv);
 
-  for(const mv of moves){
-    let acc = 0;
-    for(let k=0;k<sims;k++){
+  let simulated = 0;
+  let moveIdx = 0;
+
+  while (performance.now() < deadline){
+    const allDone = counts.every(c => c >= sims);
+    if (allDone) break;
+
+    const m = moveIdx % moves.length;
+    moveIdx++;
+    if (counts[m] >= sims) continue;
+
+    const mv = moves[m];
       const sim = cloneEngineStateForSim(state);
 
       // “Fair sampling”: reassign face-down cards in the current age using only poolIds (without reading the real identities).
@@ -2004,16 +2016,25 @@ function aiMonteCarlo(state){
         }
       }
 
-      // applica mossa candidata e poi playout veloce fino alla fine
-      applyAIMoveToSim(sim, mv);
-      playoutSim(sim);
+    // applica mossa candidata e poi playout veloce fino alla fine
+    applyAIMoveToSim(sim, mv);
+    playoutSim(sim);
 
-      // valore: score ai - score human
-      acc += (sim.pub.score.ai - sim.pub.score.human);
-    }
-    const exp = acc / sims;
-    if (exp > bestVal){ bestVal = exp; best = mv; }
+    // valore: score ai - score human
+    acc[m] += (sim.pub.score.ai - sim.pub.score.human);
+    counts[m]++;
+    simulated++;
   }
+
+  if (simulated===0) return aiGreedy(state);
+
+  let best = moves[0], bestVal = -1e9;
+  for(let i=0;i<moves.length;i++){
+    if (counts[i]===0) continue;
+    const exp = acc[i] / counts[i];
+    if (exp > bestVal){ bestVal = exp; best = moves[i]; }
+  }
+
   return best;
 }
 
@@ -3169,7 +3190,8 @@ function maybeAIMove(){
   setTimeout(()=>{
     if (!STATE || STATE.pub.ended || STATE.pub.currentPlayer!==1) return;
 
-    const mv = aiChoose(STATE);
+    const decisionStart = performance.now();
+    const mv = aiChoose(STATE, {deadline: decisionStart + AI_MOVE_MAX_MS});
 
     if (mv.type==="modernSwap"){
       const r = Engine.useModernSwap(STATE, 1);
