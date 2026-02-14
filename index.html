@@ -2483,9 +2483,13 @@ function computeFinalBreakdown(){
   const grandH = ancTotalH + modTotalH;
   const grandA = ancTotalA + modTotalA;
 
+  const wonderH = Number(pub.wonderMark?.[0]?.delta) || 0;
+  const wonderA = Number(pub.wonderMark?.[1]?.delta) || 0;
+
   return {
     ancient: {mil:{h:ancMilH,a:ancMilA,hs:ancHS,as:ancAS}, pen5:{h:ancPen5H,a:ancPen5A}, total:{h:ancTotalH,a:ancTotalA}},
     modern:  {mil:{h:modMilH,a:modMilA,hs:modHS,as:modAS}, food:{h:modFoodH,a:modFoodA,rawH:sumSuit(allH,"C", wonderMods),rawA:sumSuit(allA,"C", wonderMods)}, culture:{...cult}, tech:{h:modTechH,a:modTechA}, pen10:{h:modPen10H,a:modPen10A}, total:{h:modTotalH,a:modTotalA}},
+    wonder: {h:wonderH, a:wonderA},
     grand: {h:grandH,a:grandA}
   };
 }
@@ -2509,59 +2513,46 @@ function renderEndOverlay(){
 
   elEndScoreLine.textContent = `Final: Human ${h} – AI ${a} (${winner})`;
 
-  const anc = bd.ancient, mod = bd.modern;
+  const anc = bd.ancient, mod = bd.modern, wonder = bd.wonder;
+  const rowStyle = {
+    s: "background: rgba(239,68,68,.10); border-left: 3px solid rgba(239,68,68,.88);",
+    c: "background: rgba(34,197,94,.10); border-left: 3px solid rgba(34,197,94,.88);",
+    d: "background: rgba(56,189,248,.11); border-left: 3px solid rgba(56,189,248,.90);",
+    h: "background: rgba(250,204,21,.13); border-left: 3px solid rgba(250,204,21,.88);",
+    w: "background: rgba(168,85,247,.12); border-left: 3px solid rgba(168,85,247,.92);"
+  };
+  const row = (label, hh, aa, style)=>`
+    <tr style="${style}">
+      <td style="padding:8px 10px; font-weight:650;">${label}</td>
+      <td style="padding:8px 10px; text-align:right; font-variant-numeric: tabular-nums;">${fmtPts(hh)}</td>
+      <td style="padding:8px 10px; text-align:right; font-variant-numeric: tabular-nums;">${fmtPts(aa)}</td>
+    </tr>`;
 
-  const hBest = (mod.culture.hRuns && mod.culture.hRuns[0]) ? runText(mod.culture.hRuns[0]) : "—";
-  const hSecond = (mod.culture.hRuns && mod.culture.hRuns[1]) ? runText(mod.culture.hRuns[1]) : "";
-  const aBest = (mod.culture.aRuns && mod.culture.aRuns[0]) ? runText(mod.culture.aRuns[0]) : "—";
-  const aSecond = (mod.culture.aRuns && mod.culture.aRuns[1]) ? runText(mod.culture.aRuns[1]) : "";
-
-  function ownersLabel(group){
-    if (!group || group.length===0) return "none";
-    const owners = Array.from(new Set(group.map(g=>g.owner))).sort();
-    if (owners.length===2) return "Human & AI (tie)";
-    return owners[0]===0 ? "Human" : "AI";
-  }
-  function awardText(group, pts){
-    if (!group || group.length===0) return `+${pts}: none`;
-    return `+${pts}: ${ownersLabel(group)} (${runText(group[0].run)})`;
-  }
-
-  const cultureLine = `Human ${fmtPts(mod.culture.h)} VP (best: ${hBest}${hSecond ? "; second: " + hSecond : ""}) • AI ${fmtPts(mod.culture.a)} VP (best: ${aBest}${aSecond ? "; second: " + aSecond : ""}) — ${awardText(mod.culture.bestGroup,10)}; ${awardText(mod.culture.secondGroup,5)}`;
   elEndBody.innerHTML = `
-    <div style="display:grid; grid-template-columns: 1fr; gap:10px;">
-      <div class="box" style="background: rgba(0,0,0,.16);">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div style="font-weight:700;">Ancient Age</div>
-          <div class="pill" style="border-color: rgba(56,189,248,.28); color: rgba(56,189,248,.92);">Subtotal: Human ${anc.total.h} – AI ${anc.total.a}</div>
-        </div>
-        <div style="margin-top:8px; display:grid; gap:6px;">
-          <div>♠ Military: Human ${anc.mil.hs} vs AI ${anc.mil.as} — Human ${fmtPts(anc.mil.h)} PV • AI ${fmtPts(anc.mil.a)} PV</div>
-          <div>❺ Minor Calamity: Human ${fmtPts(anc.pen5.h)} PV • AI ${fmtPts(anc.pen5.a)} PV</div>
-        </div>
-      </div>
-
-      <div class="box" style="background: rgba(0,0,0,.16);">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div style="font-weight:700;">Modern Age</div>
-          <div class="pill" style="border-color: rgba(56,189,248,.28); color: rgba(56,189,248,.92);">Subtotal: Human ${mod.total.h} – AI ${mod.total.a}</div>
-        </div>
-
-        <div style="margin-top:8px; display:grid; gap:6px;">
-          <div>♠ Military: Human ${mod.mil.hs} vs AI ${mod.mil.as} — Human ${fmtPts(mod.mil.h)} PV • AI ${fmtPts(mod.mil.a)} PV</div>
-          <div>♣ Food: (totals: Human ${mod.food.rawH} vs AI ${mod.food.rawA}) — Human ${fmtPts(mod.food.h)} PV • AI ${fmtPts(mod.food.a)} PV</div>
-          <div>♦ Culture: — ${cultureLine}</div>
-<div>♥ Technology: Human ${fmtPts(mod.tech.h)} PV • AI ${fmtPts(mod.tech.a)} PV</div>
-          <div>❿ Major Calamity: Human ${fmtPts(mod.pen10.h)} PV • AI ${fmtPts(mod.pen10.a)} PV</div>
-        </div>
-      </div>
-
-      <div class="box" style="background: rgba(0,0,0,.16);">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div style="font-weight:750;">Total</div>
-          <div class="pill ok" style="border-color: rgba(34,197,94,.35); color: rgba(34,197,94,.92);">Human ${h}</div>
-          <div class="pill warn" style="border-color: rgba(245,158,11,.35); color: rgba(245,158,11,.92);">AI ${a}</div>
-        </div>
+    <div class="box" style="background: rgba(0,0,0,.16);">
+      <table style="width:100%; border-collapse:separate; border-spacing:0 6px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:0 10px 2px; color: rgba(229,231,235,.74);"></th>
+            <th style="text-align:right; padding:0 10px 2px; color: rgba(229,231,235,.74);">Human</th>
+            <th style="text-align:right; padding:0 10px 2px; color: rgba(229,231,235,.74);">AI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${row("♠ Militare antico", anc.mil.h, anc.mil.a, rowStyle.s)}
+          ${row("♠ Militare moderno", mod.mil.h, mod.mil.a, rowStyle.s)}
+          ${row("❺ Calamità antica", anc.pen5.h, anc.pen5.a, rowStyle.s)}
+          ${row("❿ Calamità moderna", mod.pen10.h, mod.pen10.a, rowStyle.s)}
+          ${row("♥ Tecnologia", mod.tech.h, mod.tech.a, rowStyle.h)}
+          ${row("♦ Cultura", mod.culture.h, mod.culture.a, rowStyle.d)}
+          ${row("♣ Cibo", mod.food.h, mod.food.a, rowStyle.c)}
+          ${row("👑 Wonder", wonder.h, wonder.a, rowStyle.w)}
+        </tbody>
+      </table>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12);">
+        <div style="font-weight:750;">Totale</div>
+        <div class="pill ok" style="border-color: rgba(34,197,94,.35); color: rgba(34,197,94,.92);">Human ${h}</div>
+        <div class="pill warn" style="border-color: rgba(245,158,11,.35); color: rgba(245,158,11,.92);">AI ${a}</div>
       </div>
     </div>
   `;
