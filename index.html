@@ -1921,12 +1921,25 @@ function enumerateMoves(publicView, player){
 }
 
 function aiChoose(state, options={}){
+  const startedAt = performance.now();
+  const report = (algo)=>{
+    if (typeof options.debugSink === "function"){
+      options.debugSink({
+        player: 1,
+        level: options.level || "mc",
+        algo,
+        elapsedMs: performance.now() - startedAt
+      });
+    }
+  };
   const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
   const level = options.level || document.getElementById("aiLevel")?.value || "mc";
-  if (level==="random") return aiRandom(state);
-  if (level==="greedy") return aiGreedy(state);
-  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) return aiFastHeuristic(state);
-  return aiMonteCarlo(state, deadline);
+  if (level==="random") { const mv = aiRandom(state); report("random"); return mv; }
+  if (level==="greedy") { const mv = aiGreedy(state); report("greedy"); return mv; }
+  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) { const mv = aiFastHeuristic(state); report("fast"); return mv; }
+  const mv = aiMonteCarlo(state, deadline);
+  report("mc");
+  return mv;
 }
 
 function mirrorStateForPlayerZero(state){
@@ -1947,19 +1960,32 @@ function mirrorStateForPlayerZero(state){
 }
 
 function chooseMoveForPlayer(state, player, options={}){
+  const startedAt = performance.now();
+  const report = (algo)=>{
+    if (typeof options.debugSink === "function"){
+      options.debugSink({
+        player,
+        level: options.level || "mc",
+        algo,
+        elapsedMs: performance.now() - startedAt
+      });
+    }
+  };
   const level = options.level || "mc";
   const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
-  if (player===1) return aiChoose(state, {level, deadline});
+  if (player===1) return aiChoose(state, {level, deadline, debugSink: options.debugSink});
   if (player!==0) return null;
 
   // Fast path for stats/batch runs: avoid full mirror+clone when we only need
   // a quick decision for player 0.
-  if (level === "random") return chooseRandomForPlayer(state, 0);
-  if (level === "greedy") return chooseFastHeuristicForPlayer(state, 0);
-  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) return chooseFastHeuristicForPlayer(state, 0);
+  if (level === "random") { const mv = chooseRandomForPlayer(state, 0); report("random"); return mv; }
+  if (level === "greedy") { const mv = chooseFastHeuristicForPlayer(state, 0); report("greedy"); return mv; }
+  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) { const mv = chooseFastHeuristicForPlayer(state, 0); report("fast"); return mv; }
 
   const mirrored = mirrorStateForPlayerZero(state);
-  return aiChoose(mirrored, {level, deadline});
+  const mv = aiChoose(mirrored, {level, deadline});
+  report(level === "mc" ? "mc+mirror" : level);
+  return mv;
 }
 
 function chooseRandomForPlayer(state, player){

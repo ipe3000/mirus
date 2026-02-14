@@ -69,6 +69,7 @@
         </label>
         <button id="runBtn">Esegui simulazione</button>
         <div id="status" class="small">Pronto.</div>
+        <div id="perf" class="small"></div>
       </div>
     </aside>
 
@@ -120,6 +121,7 @@
   const frame = document.getElementById("coreFrame");
   const runBtn = document.getElementById("runBtn");
   const statusEl = document.getElementById("status");
+  const perfEl = document.getElementById("perf");
 
   const els = {
     kGames: document.getElementById("kGames"),
@@ -146,11 +148,20 @@
     return sorted[lo] + (sorted[hi] - sorted[lo]) * (p - lo);
   }
 
-  function chooseForPlayer(state, player, level){
+  function chooseForPlayer(state, player, level, perf){
     if (typeof Core.chooseMoveForPlayer === "function"){
+      const coreNow = frame.contentWindow?.performance?.now ? frame.contentWindow.performance.now() : performance.now();
       return Core.chooseMoveForPlayer(state, player, {
         level,
-        deadline: performance.now() + BATCH_MOVE_BUDGET_MS
+        deadline: coreNow + BATCH_MOVE_BUDGET_MS,
+        debugSink: perf ? (entry)=>{
+          perf.moves++;
+          perf.totalMs += entry.elapsedMs;
+          if (entry.player === 0) perf.playerMs += entry.elapsedMs;
+          else perf.aiMs += entry.elapsedMs;
+          perf.byAlgo[entry.algo] = (perf.byAlgo[entry.algo] || 0) + entry.elapsedMs;
+          perf.byLevel[entry.level] = (perf.byLevel[entry.level] || 0) + entry.elapsedMs;
+        } : null
       });
     }
 
@@ -168,18 +179,7 @@
     if (mv.type === "pass") { state.pub.picksLeftThisTurn = 1; state.pub.currentPlayer = 1 - state.pub.currentPlayer; }
   }
 
-  function playout(state, p0Level, p1Level){
-    let guard = 0;
-    while(!state.pub.ended && guard < 600){
-      guard++;
-      const p = state.pub.currentPlayer;
-      const level = p===0 ? p0Level : p1Level;
-      const mv = chooseForPlayer(state, p, level);
-      applyMove(state, p, mv);
-    }
-  }
-
-  function simulateOne(startingPlayer, p0Level, p1Level){
+  function simulateOne(startingPlayer, p0Level, p1Level, perf){
     const state = Core.Engine.newGame(startingPlayer);
     const events = {playerWonder:0, aiWonder:0, playerSwap:0, aiSwap:0, kingChoices:0};
 
@@ -188,7 +188,7 @@
       guard++;
       const p = state.pub.currentPlayer;
       const level = p===0 ? p0Level : p1Level;
-      const mv = chooseForPlayer(state, p, level);
+      const mv = chooseForPlayer(state, p, level, perf);
       if (mv?.type === "wonder") p===0 ? events.playerWonder++ : events.aiWonder++;
       if (mv?.type === "modernSwap") p===0 ? events.playerSwap++ : events.aiSwap++;
       if (mv?.type === "kingFinal") events.kingChoices++;
@@ -247,9 +247,11 @@
     statusEl.textContent = `Simulazione in corso: 0/${n}`;
 
     const out = [];
+    const perf = {moves:0,totalMs:0,playerMs:0,aiMs:0,byAlgo:{},byLevel:{}};
+    const batchStartedAt = performance.now();
     for (let i=0;i<n;i++){
       const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
-      out.push(simulateOne(starter, p0, p1));
+      out.push(simulateOne(starter, p0, p1, perf));
       statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
       await new Promise(r=>setTimeout(r, 0));
     }
@@ -301,7 +303,16 @@
 
     renderHistogram(margins);
 
-    statusEl.textContent = `Completato: ${n} partite.`;
+    const elapsed = performance.now() - batchStartedAt;
+    const msPerGame = elapsed / out.length;
+    const msPerMove = perf.moves ? perf.totalMs / perf.moves : 0;
+    const algoBreakdown = Object.entries(perf.byAlgo)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v])=>`${k}: ${(100*v/Math.max(perf.totalMs,1)).toFixed(1)}%`)
+      .join(" • ");
+    perfEl.textContent = `Tempo medio partita ${msPerGame.toFixed(1)} ms; mossa ${msPerMove.toFixed(2)} ms (Player ${perf.playerMs.toFixed(0)} ms, AI ${perf.aiMs.toFixed(0)} ms). Breakdown: ${algoBreakdown || "n/d"}.`;
+
+    statusEl.textContent = `Completato: ${n} partite in ${(elapsed/1000).toFixed(2)}s.`;
     runBtn.disabled = false;
   }
 
