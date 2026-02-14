@@ -1952,8 +1952,53 @@ function chooseMoveForPlayer(state, player, options={}){
   if (player===1) return aiChoose(state, {level, deadline});
   if (player!==0) return null;
 
+  // Fast path for stats/batch runs: avoid full mirror+clone when we only need
+  // a quick decision for player 0.
+  if (level === "random") return chooseRandomForPlayer(state, 0);
+  if (level === "greedy") return chooseFastHeuristicForPlayer(state, 0);
+  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) return chooseFastHeuristicForPlayer(state, 0);
+
   const mirrored = mirrorStateForPlayerZero(state);
   return aiChoose(mirrored, {level, deadline});
+}
+
+function chooseRandomForPlayer(state, player){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, player);
+  return moves[randInt(moves.length)];
+}
+
+function chooseFastHeuristicForPlayer(state, player){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, player);
+  if (moves.length <= 1) return moves[0];
+
+  let best = moves[0];
+  let bestScore = -1e9;
+
+  for (const mv of moves){
+    if (mv.type !== "take"){
+      if (bestScore < -1000){ bestScore = -1000; best = mv; }
+      continue;
+    }
+    const card = pv.slots[mv.idx]?.card;
+    if (!card) continue;
+
+    let score = 0;
+    if (card.suit === "S") score += card.value * 0.8;
+    if (card.suit === "C") score += card.value * 0.35;
+    if (card.suit === "H") score += (card.value >= 7 ? 2.2 : 0.9);
+    if (card.suit === "D") score += (card.value >= 6 ? 2.8 : 1.3);
+    if (card.kind === "king") score += 4.2;
+
+    score += 0.25 * estimateDenialScore(pv, mv, player);
+    if (score > bestScore){
+      bestScore = score;
+      best = mv;
+    }
+  }
+
+  return best;
 }
 
 function aiFastHeuristic(state){
