@@ -1018,7 +1018,7 @@ const MC_ADAPTIVE_EARLY_TURNS = 6;
 const MC_SIMS_OPENING = 24;
 const MC_SIMS_EARLY = 52;
 const MC_SIMS_LATE = 110;
-const AI_MOVE_MAX_MS = 3000;
+const AI_MOVE_MAX_MS = 10;
 const MC_ROOT_PRUNE_MARGIN = 1.8;
 const MC_ROOT_MIN_KEEP = 2;
 const MC_ROOT_KEEP_FRACTION = 0.5;
@@ -1925,7 +1925,41 @@ function aiChoose(state, options={}){
   const level = options.level || document.getElementById("aiLevel")?.value || "mc";
   if (level==="random") return aiRandom(state);
   if (level==="greedy") return aiGreedy(state);
+  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) return aiFastHeuristic(state);
   return aiMonteCarlo(state, deadline);
+}
+
+function aiFastHeuristic(state){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, 1);
+  if (moves.length <= 1) return moves[0];
+
+  let best = moves[0];
+  let bestScore = -1e9;
+
+  for (const mv of moves){
+    if (mv.type !== "take"){
+      if (bestScore < -1000){ bestScore = -1000; best = mv; }
+      continue;
+    }
+    const card = pv.slots[mv.idx]?.card;
+    if (!card) continue;
+
+    let score = 0;
+    if (card.suit === "S") score += card.value * 0.8;
+    if (card.suit === "C") score += card.value * 0.35;
+    if (card.suit === "H") score += (card.value >= 7 ? 2.2 : 0.9);
+    if (card.suit === "D") score += (card.value >= 6 ? 2.8 : 1.3);
+    if (card.kind === "king") score += 4.2;
+
+    score += 0.25 * estimateDenialScore(pv, mv, 1);
+    if (score > bestScore){
+      bestScore = score;
+      best = mv;
+    }
+  }
+
+  return best;
 }
 
 function aiRandom(state){
@@ -3314,7 +3348,7 @@ function maybeAIMove(){
       render();
       return;
     }
-  }, 120);
+  }, 0);
 }
 
 // init
