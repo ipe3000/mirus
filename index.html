@@ -1394,10 +1394,10 @@ function cultureContestVP(hCards, aCards, wonderMods=null){
 
 function techPoints(cards, wonderMods=null){
   const set = valuesSet(cards,"H", wonderMods);
-  const runs = circularRuns(set);
-  let best = 0;
-  for (const r of runs) if (r.len>best) best = r.len;
-  return (best>=3) ? (2*best) : 0;
+  const runs = circularRuns(set).filter(r=>r.len>=3);
+  let total = 0;
+  for (const r of runs) total += (2 * r.len);
+  return total;
 }
 function foodPoints(cards, wonderMods=null){
   return Math.floor(sumSuit(cards,"C", wonderMods)/5);
@@ -2824,15 +2824,17 @@ function renderHands(){
     if (g.owner===1) aCultKeys.add(k);
   }
 
-  function bestTechKey(cards){
+  function techVpKeys(cards){
     const vals = suitValues(cards,"H");
     const runs = circularRuns(new Set(vals)).filter(r=>r.len>=3);
     runs.sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard));
-    return (runs[0] && runs[0].cards) ? runs[0].cards.join(",") : "";
+    const keys = new Set();
+    for (const r of runs) keys.add(r.cards.join(","));
+    return keys;
   }
 
-  const hTechKey = bestTechKey(h);
-  const aTechKey = bestTechKey(a);
+  const hTechKeys = techVpKeys(h);
+  const aTechKeys = techVpKeys(a);
 
   const addChip = (parent, text, opts={}) => {
     const vp = !!opts.vp;
@@ -2863,8 +2865,8 @@ function renderHands(){
     }
     if (suit === "H"){
       const vals = suitValues(cards,"H");
-      const key = isHuman ? hTechKey : aTechKey;
-      const tokens = runTokens(vals, 3, key ? new Set([key]) : null);
+      const keys = isHuman ? hTechKeys : aTechKeys;
+      const tokens = runTokens(vals, 3, (keys && keys.size) ? keys : null);
       return { tokens, markedCard };
     }
 
