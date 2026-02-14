@@ -1915,7 +1915,7 @@ function enumerateMoves(publicView, player){
 
 function aiChoose(state, options={}){
   const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
-  const level = document.getElementById("aiLevel").value;
+  const level = options.level || document.getElementById("aiLevel")?.value || "mc";
   if (level==="random") return aiRandom(state);
   if (level==="greedy") return aiGreedy(state);
   return aiMonteCarlo(state, deadline);
@@ -3234,6 +3234,18 @@ clearLog();
 logLine("Ready. Press “New game” to start with the selected settings.");
 render();
 scheduleFitTableau();
+
+window.MirusCore = {
+  Engine,
+  aiChoose,
+  enumerateMoves,
+  quickEval,
+  cloneEngineStateForSim,
+  totalScoring,
+  layoutForAge,
+  cardLabel,
+  SUIT_NAME
+};
 
 
 </script>
