@@ -964,6 +964,12 @@ body.playing #wonderBtnSide{ display:inline-flex; }
     <div id="kingCardsGrid" class="miniGrid"></div>
     <div id="kingErr" class="kingErr"></div>
 
+    <div class="kingActions" style="justify-content:flex-start; gap:8px; margin-bottom:8px;">
+      <button id="kingDeltaMinusBtn" title="Set modifier to -1">-1</button>
+      <button id="kingDeltaBaseBtn" title="Set modifier to 0">0</button>
+      <button id="kingDeltaPlusBtn" title="Set modifier to +1">+1</button>
+    </div>
+
     <div class="kingActions">
       <button class="primary" id="kingConfirmBtn" disabled>Confirm</button>
     </div>
@@ -1511,7 +1517,7 @@ const Engine = (() => {
       picksLeftThisTurn: 1,
       jokerUsed: [false,false],
       modernSwapStillAvailable: false, // settato quando si entra in modern
-      kingWonder: null, // active while resolving Wonder mark / final +/-1 choice
+      kingWonder: null, // active while resolving Wonder final choice (card + +/-1)
       wonderMark: [
         { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false },
         { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false }
@@ -1625,13 +1631,13 @@ const Engine = (() => {
     const ownCards = pub.taken[builder].filter(c=>c && c.kind==="card");
     if (!ownCards.length) return {started:false};
 
-    pub.kingWonder = {
-      phase: "mark",
-      builder,
-      eligibleIds: ownCards.map(c=>c.id),
-      pendingFinalize: true
+    pub.wonderMark[builder] = {
+      cardId: null,
+      cardBaseValue: null,
+      pending: true,
+      delta: 0,
+      finalChoicePending: true
     };
-    pub.wonderMark[builder].pending = true;
     return {started:true};
   }
 
@@ -1667,12 +1673,22 @@ const Engine = (() => {
         const allA = pub.taken[1];
         const pendingFinal = [0,1].find(p=>{
           const wm = pub.wonderMark[p];
-          return wm && wm.cardId && wm.finalChoicePending;
+          return wm && wm.finalChoicePending;
         });
         if (typeof pendingFinal === "number"){
+          const eligibleIds = pub.taken[pendingFinal]
+            .filter(c=>c && c.kind==="card")
+            .map(c=>c.id);
+
+          if (!eligibleIds.length){
+            pub.wonderMark[pendingFinal].pending = false;
+            pub.wonderMark[pendingFinal].finalChoicePending = false;
+            pub.wonderMark[pendingFinal].delta = 0;
+          } else {
           pub.kingWonder = {
             phase: "finalChoice",
             builder: pendingFinal,
+            eligibleIds,
             eligibleDelta: [-1,0,1],
             pendingFinalize: true
           };
@@ -1680,6 +1696,7 @@ const Engine = (() => {
             return autoResolveKingWonder(state);
           }
           return {ok:true, pendingKingWonder:true, flipped};
+          }
         }
 
         const sc = modernScoring(allH, allA, wonderModsFromState(pub));
@@ -1705,48 +1722,30 @@ const Engine = (() => {
     return {ok:true, flipped};
   }
 
-  function submitKingWonderOffer(state, selectedIds){
-    const {pub} = state;
-    const kw = pub.kingWonder;
-    if (!kw || kw.phase !== "mark") return {ok:false, msg:"No Wonder mark is pending."};
-    if (pub.ended) return {ok:false, msg:"Game over."};
-
-    const uniq = Array.from(new Set(selectedIds||[]));
-    if (uniq.length !== 1) return {ok:false, msg:"Select exactly 1 card to mark."};
-
-    const eligible = new Set(kw.eligibleIds);
-    const chosenId = uniq[0];
-    if (!eligible.has(chosenId)) return {ok:false, msg:"Invalid mark (choose one of your own non-King cards)."};
-
-    const ownCards = pub.taken[kw.builder];
-    const marked = ownCards.find(c=>c && c.id===chosenId && c.kind==="card");
-    if (!marked) return {ok:false, msg:"Invalid mark."};
-
-    pub.wonderMark[kw.builder] = {
-      cardId: marked.id,
-      cardBaseValue: marked.value,
-      pending: false,
-      delta: 0,
-      finalChoicePending: true
-    };
-
-    pub.kingWonder = null;
-    const res = finalizeAfterTake(state);
-    res.markedCard = marked;
-    return res;
-  }
-
-  function chooseKingWonder(state, chosenId, _internal=false){
+  function chooseKingWonder(state, chosen, _internal=false){
     const {pub} = state;
     const kw = pub.kingWonder;
     if (!kw || kw.phase !== "finalChoice") return {ok:false, msg:"No Wonder final choice is pending."};
     if (pub.ended) return {ok:false, msg:"Game over."};
-    const delta = Number(chosenId);
-    if (![-1,0,1].includes(delta)) return {ok:false, msg:"Invalid final value choice."};
     const builder = kw.builder;
     const wm = pub.wonderMark[builder];
-    if (!wm || !wm.cardId) return {ok:false, msg:"Missing marked card."};
+    const fallbackCardId = wm && wm.cardId;
 
+    const chosenCardId = (chosen && typeof chosen === "object") ? chosen.cardId : fallbackCardId;
+    const deltaRaw = (chosen && typeof chosen === "object") ? chosen.delta : chosen;
+    const delta = Number(deltaRaw);
+
+    const eligible = new Set(Array.isArray(kw.eligibleIds) ? kw.eligibleIds : []);
+    if (!chosenCardId || !eligible.has(chosenCardId)) return {ok:false, msg:"Invalid final card choice."};
+    if (![-1,0,1].includes(delta)) return {ok:false, msg:"Invalid final value choice."};
+    if (!wm) return {ok:false, msg:"Missing Wonder state."};
+
+    const marked = pub.taken[builder].find(c=>c && c.kind==="card" && c.id===chosenCardId);
+    if (!marked) return {ok:false, msg:"Missing selected card."};
+
+    wm.cardId = marked.id;
+    wm.cardBaseValue = marked.value;
+    wm.pending = false;
     wm.delta = delta;
     wm.finalChoicePending = false;
     pub.kingWonder = null;
@@ -1758,7 +1757,7 @@ const Engine = (() => {
     pub.ended = true;
     const res = {ok:true, endedGame:true, flipped:0};
     res.kingWonderDelta = delta;
-    res.kingWonderCardId = wm.cardId;
+    res.kingWonderCardId = marked.id;
     res._internal = _internal;
     return res;
   }
@@ -1769,25 +1768,24 @@ const Engine = (() => {
     const kw = pub.kingWonder;
     if (!kw) return finalizeAfterTake(state);
 
-    if (kw.phase === "mark"){
-      const ownCards = pub.taken[kw.builder].filter(c=>c && c.kind==="card");
-      if (!ownCards.length){
+    if (kw.phase === "finalChoice"){
+      const eligibleIds = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
+      if (!eligibleIds.length){
         pub.kingWonder = null;
         return finalizeAfterTake(state);
       }
-      const chosen = pickBestFromOfferAI(ownCards);
-      return submitKingWonderOffer(state, [chosen.id]);
-    }
-
-    if (kw.phase === "finalChoice"){
-      const scores = [-1,0,1].map(delta=>{
+      const scores = [];
+      for (const cardId of eligibleIds){
+        for (const delta of [-1,0,1]){
         const tmp = (typeof structuredClone === "function") ? structuredClone(pub) : JSON.parse(JSON.stringify(pub));
+        tmp.wonderMark[kw.builder].cardId = cardId;
         tmp.wonderMark[kw.builder].delta = delta;
         const t = totalScoring(tmp.taken[0], tmp.taken[1], wonderModsFromState(tmp));
-        return {delta, val: t.ai - t.human};
-      });
-      scores.sort((a,b)=>b.val-a.val || b.delta-a.delta);
-      return chooseKingWonder(state, scores[0].delta, true);
+          scores.push({cardId, delta, val: t.ai - t.human});
+        }
+      }
+      scores.sort((a,b)=>b.val-a.val || b.delta-a.delta || String(a.cardId).localeCompare(String(b.cardId)));
+      return chooseKingWonder(state, {cardId: scores[0].cardId, delta: scores[0].delta}, true);
     }
 
     return finalizeAfterTake(state);
@@ -1809,15 +1807,11 @@ const Engine = (() => {
     pub.taken[p].push(s.card);
     pub.picksLeftThisTurn -= 1;
 
-    // King Wonder: immediately after taking your 3rd King, before revealing newly accessible cards.
+    // King Wonder: after taking your 3rd King, defer card+modifier choice to end of Modern Age.
     if (pub.age === "modern" && s.card && s.card.kind==="king"){
       const afterKings = beforeKings + 1;
       if (afterKings === 3){
-        const kw = startKingWonder(state, p);
-        if (kw.started){
-          if (state.__sim) return autoResolveKingWonder(state);
-          return {ok:true, pendingKingWonder:true};
-        }
+        startKingWonder(state, p);
       }
     }
 
@@ -1853,7 +1847,7 @@ const Engine = (() => {
     newGame, take,
     useJokerDouble, canUseJokerDouble,
     useModernSwap, canUseModernSwap,
-    submitKingWonderOffer, chooseKingWonder,
+    chooseKingWonder,
     isAccessible,
     getPublicView, unknownPoolForAI
   };
@@ -1885,13 +1879,14 @@ function enumerateMoves(publicView, player){
   if (publicView.kingWonder){
     const kw = publicView.kingWonder;
     if (kw.builder !== player) return [{type:"pass"}];
-    if (kw.phase === "mark"){
-      const ids = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
-      if (ids.length===0) return [{type:"pass"}];
-      return ids.map(id => ({type:"kingMark", id}));
-    }
     if (kw.phase === "finalChoice"){
-      return [-1,0,1].map(delta => ({type:"kingDelta", delta}));
+      const ids = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
+      if (!ids.length) return [{type:"pass"}];
+      const moves = [];
+      for (const id of ids){
+        for (const delta of [-1,0,1]) moves.push({type:"kingFinal", cardId:id, delta});
+      }
+      return moves;
     }
     return [{type:"pass"}];
   }
@@ -2047,12 +2042,8 @@ function adaptiveMCSimsForAge(publicView){
 }
 
 function applyAIMoveToSim(sim, mv){
-  if (mv.type==="kingMark"){
-    Engine.submitKingWonderOffer(sim, [mv.id]);
-    return;
-  }
-  if (mv.type==="kingDelta"){
-    Engine.chooseKingWonder(sim, mv.delta, true);
+  if (mv.type==="kingFinal"){
+    Engine.chooseKingWonder(sim, {cardId: mv.cardId, delta: mv.delta}, true);
     return;
   }
   if (mv.type==="modernSwap"){
@@ -2142,6 +2133,9 @@ const elKingMsg = document.getElementById("kingMsg");
 const elKingReq = document.getElementById("kingReq");
 const elKingGrid = document.getElementById("kingCardsGrid");
 const elKingErr = document.getElementById("kingErr");
+const btnKingDeltaMinus = document.getElementById("kingDeltaMinusBtn");
+const btnKingDeltaBase = document.getElementById("kingDeltaBaseBtn");
+const btnKingDeltaPlus = document.getElementById("kingDeltaPlusBtn");
 const btnKingConfirm = document.getElementById("kingConfirmBtn");
 
 let KING_OPEN = false;
@@ -2192,6 +2186,8 @@ function syncKingOverlay(){
   if (key !== KING_CTX){
     KING_CTX = key;
     KING_SELECTED.clear();
+    const presetId = STATE?.pub?.wonderMark?.[kw.builder]?.cardId;
+    if (presetId) KING_SELECTED.add(presetId);
     if (elKingErr) elKingErr.textContent = "";
   }
 
@@ -2200,22 +2196,12 @@ function syncKingOverlay(){
 
   const builderName = playerName(kw.builder);
 
-  if (kw.phase === "mark"){
-    elKingTitle.textContent = "King Wonder — Mark a card";
-    elKingMsg.innerHTML = `<b>${builderName}</b> has built the Wonder (3rd K). Mark <b>1</b> of ${builderName}'s non-King cards.`;
-    elKingReq.textContent = "The card can later be scored at value -1, base, or +1.";
+  elKingTitle.textContent = "King Wonder — Final card and value";
+  elKingMsg.innerHTML = `<b>${builderName}</b>: choose the card to boost and its final modifier.`;
+  elKingReq.textContent = "Select 1 non-King card and set -1 / 0 (base) / +1.";
 
-    const cards = _cardsForIds(kw.eligibleIds);
-    renderKingCards(cards, kw);
-  } else {
-    elKingTitle.textContent = "King Wonder — Final value choice";
-    elKingMsg.innerHTML = `<b>${builderName}</b>: choose the marked card final value modifier.`;
-    elKingReq.textContent = "Valid choices: -1, 0 (base), +1.";
-
-    const markedId = STATE.pub.wonderMark?.[kw.builder]?.cardId;
-    const cards = _cardsForIds(markedId ? [markedId] : []);
-    renderKingCards(cards, kw);
-  }
+  const cards = _cardsForIds(kw.eligibleIds || []);
+  renderKingCards(cards, kw);
 }
 
 function tuneKingOverlayLayout(cardCount, phase){
@@ -2226,13 +2212,9 @@ function tuneKingOverlayLayout(cardCount, phase){
   if (vh <= 740 || vw <= 700) miniW = 52;
   if (vh <= 640) miniW = 46;
 
-  if (phase === "mark"){
-    if (cardCount >= 16) miniW -= 8;
-    else if (cardCount >= 12) miniW -= 6;
-    else if (cardCount >= 9) miniW -= 4;
-  } else {
-    miniW = Math.max(miniW - 4, 40);
-  }
+  if (cardCount >= 16) miniW -= 8;
+  else if (cardCount >= 12) miniW -= 6;
+  else if (cardCount >= 9) miniW -= 4;
 
   miniW = Math.max(40, Math.min(60, miniW));
   const miniH = Math.round(miniW * 1.38);
@@ -2280,27 +2262,16 @@ function renderKingCards(cards, kw){
 
     const small = document.createElement("div");
     small.className = "small";
-    small.textContent = (phase === "mark")
-      ? ((c.age === "modern") ? "modern" : "ancient")
-      : "marked card";
+    small.textContent = (c.age === "modern") ? "modern" : "ancient";
 
     el.appendChild(small);
     el.appendChild(big);
 
     el.addEventListener("click", ()=>{
       if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
-      if (phase === "mark"){
-        if (!selectable && !KING_SELECTED.has(c.id)) return;
-        if (KING_SELECTED.has(c.id)) KING_SELECTED.delete(c.id);
-        else KING_SELECTED.add(c.id);
-      } else {
-        const p = kw.builder;
-        const wm = STATE.pub.wonderMark[p];
-        const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
-        wm.delta = (cur===-1) ? 0 : (cur===0 ? 1 : -1);
-        syncKingOverlay();
-        return;
-      }
+      if (!selectable && !KING_SELECTED.has(c.id)) return;
+      if (KING_SELECTED.has(c.id)) KING_SELECTED.delete(c.id);
+      else KING_SELECTED.add(c.id);
 
       // Re-render to apply button state
       syncKingOverlay();
@@ -2309,48 +2280,49 @@ function renderKingCards(cards, kw){
     return el;
   }
 
-  if (phase === "mark"){
-    const grouped = {S:[], C:[], H:[], D:[]};
-    for (const c of sortedCards){
-      if (!c || !grouped[c.suit]) continue;
-      grouped[c.suit].push(c);
-    }
-
-    for (const s of ["S","C","H","D"]){
-      const groupCards = grouped[s];
-      if (!groupCards.length) continue;
-      const box = document.createElement("div");
-      box.className = "kingSuitGroup";
-
-      const ttl = document.createElement("div");
-      ttl.className = "kingSuitTitle";
-      ttl.textContent = `${SUIT_ICON[s]} ${SUIT_NAME[s]}`;
-      box.appendChild(ttl);
-
-      const row = document.createElement("div");
-      row.className = "kingSuitCards";
-      for (const c of groupCards) row.appendChild(renderMiniCard(c));
-      box.appendChild(row);
-      elKingGrid.appendChild(box);
-    }
-  } else {
-    for (const c of sortedCards) elKingGrid.appendChild(renderMiniCard(c));
+  const grouped = {S:[], C:[], H:[], D:[]};
+  for (const c of sortedCards){
+    if (!c || !grouped[c.suit]) continue;
+    grouped[c.suit].push(c);
   }
 
-  if (phase === "mark"){
-    btnKingConfirm.textContent = `Mark (${KING_SELECTED.size}/1)`;
-    const ok = (KING_SELECTED.size === 1);
-    btnKingConfirm.disabled = !ok;
-    if (elKingErr){
-      elKingErr.textContent = ok ? "" : "Select exactly 1 card to mark.";
-    }
-  } else {
-    const wm = STATE?.pub?.wonderMark?.[kw.builder];
-    const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
-    btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
-    btnKingConfirm.disabled = false;
-    if (elKingErr) elKingErr.textContent = "Click the marked card to cycle between -1 / 0 / +1, then press Confirm.";
+  for (const s of ["S","C","H","D"]){
+    const groupCards = grouped[s];
+    if (!groupCards.length) continue;
+    const box = document.createElement("div");
+    box.className = "kingSuitGroup";
+
+    const ttl = document.createElement("div");
+    ttl.className = "kingSuitTitle";
+    ttl.textContent = `${SUIT_ICON[s]} ${SUIT_NAME[s]}`;
+    box.appendChild(ttl);
+
+    const row = document.createElement("div");
+    row.className = "kingSuitCards";
+    for (const c of groupCards) row.appendChild(renderMiniCard(c));
+    box.appendChild(row);
+    elKingGrid.appendChild(box);
   }
+
+  const wm = STATE?.pub?.wonderMark?.[kw.builder] || {};
+  const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+  const selectedId = [...KING_SELECTED][0] || null;
+  if (selectedId){
+    wm.cardId = selectedId;
+    STATE.pub.wonderMark[kw.builder] = wm;
+  }
+
+  btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
+  btnKingConfirm.disabled = (KING_SELECTED.size !== 1);
+  if (btnKingDeltaMinus) btnKingDeltaMinus.disabled = false;
+  if (btnKingDeltaBase) btnKingDeltaBase.disabled = false;
+  if (btnKingDeltaPlus) btnKingDeltaPlus.disabled = false;
+  if (btnKingDeltaMinus) btnKingDeltaMinus.classList.toggle("primary", cur===-1);
+  if (btnKingDeltaBase) btnKingDeltaBase.classList.toggle("primary", cur===0);
+  if (btnKingDeltaPlus) btnKingDeltaPlus.classList.toggle("primary", cur===1);
+  if (elKingErr) elKingErr.textContent = (KING_SELECTED.size===1)
+    ? "Click the selected card to deselect, or press Confirm. Use -1 / 0 / +1 buttons below."
+    : "Select exactly 1 card, then choose -1 / 0 / +1 and Confirm.";
 }
 
 function logFinalize(res, beforeAge){
@@ -2375,34 +2347,35 @@ if (btnKingConfirm) btnKingConfirm.addEventListener("click", ()=>{
   const kw = STATE.pub.kingWonder;
   const beforeAge = STATE.pub.age;
 
-  if (kw.phase === "mark"){
-    const ids = [...KING_SELECTED];
-    const markedText = ids.map(id => cardLabel(_findCardById(id))).filter(Boolean).join(", ");
-    const r = Engine.submitKingWonderOffer(STATE, ids);
-    if (!r.ok){
-      if (elKingErr) elKingErr.textContent = r.msg || "Invalid mark.";
-      return;
-    }
-    logLine(`King Wonder: Human marks ${markedText || "(none)"}.`);
-    logFinalize(r, beforeAge);
-    render();
-    maybeAIMove();
-  } else {
-    const p = kw.builder;
-    const wm = STATE.pub.wonderMark[p];
-    const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
-    const r = Engine.chooseKingWonder(STATE, cur);
-    if (!r.ok){
-      if (elKingErr) elKingErr.textContent = r.msg || "Invalid choice.";
-      return;
-    }
-    const c = _findCardById(r.kingWonderCardId);
-    logLine(`King Wonder: ${playerName(p)} final choice on ${cardLabel(c)} = ${r.kingWonderDelta>=0?`+${r.kingWonderDelta}`:String(r.kingWonderDelta)}.`);
-    logFinalize(r, beforeAge);
-    render();
-    maybeAIMove();
+  const p = kw.builder;
+  const wm = STATE.pub.wonderMark[p] || {};
+  const selectedId = [...KING_SELECTED][0] || wm.cardId || null;
+  const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+  const r = Engine.chooseKingWonder(STATE, {cardId:selectedId, delta:cur});
+  if (!r.ok){
+    if (elKingErr) elKingErr.textContent = r.msg || "Invalid choice.";
+    return;
   }
+  const c = _findCardById(r.kingWonderCardId);
+  logLine(`King Wonder: ${playerName(p)} final choice on ${cardLabel(c)} = ${r.kingWonderDelta>=0?`+${r.kingWonderDelta}`:String(r.kingWonderDelta)}.`);
+  logFinalize(r, beforeAge);
+  render();
+  maybeAIMove();
 });
+
+function setKingDelta(delta){
+  if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
+  const kw = STATE.pub.kingWonder;
+  const wm = STATE.pub.wonderMark[kw.builder];
+  if (!wm) return;
+  if (![-1,0,1].includes(delta)) return;
+  wm.delta = delta;
+  syncKingOverlay();
+}
+
+if (btnKingDeltaMinus) btnKingDeltaMinus.addEventListener("click", ()=>setKingDelta(-1));
+if (btnKingDeltaBase) btnKingDeltaBase.addEventListener("click", ()=>setKingDelta(0));
+if (btnKingDeltaPlus) btnKingDeltaPlus.addEventListener("click", ()=>setKingDelta(1));
 
 
 const elEnd = document.getElementById("endOverlay");
@@ -3145,11 +3118,7 @@ function render(){
         if (r.pendingKingWonder){
           const kw = STATE.pub.kingWonder;
           if (kw){
-            if (kw.phase==="finalChoice"){
-              logLine(`King Wonder: ${playerName(kw.builder)} chooses final value for the marked card (-1/0/+1).`);
-            } else {
-              logLine(`King Wonder: ${playerName(kw.builder)} must mark 1 own non-King card.`);
-            }
+            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final card and value (-1/0/+1).`);
           }
         } else {
           if (r.flipped>0) logLine(`${r.flipped} card(s) revealed.`);
@@ -3220,8 +3189,7 @@ function maybeAIMove(){
         if (r.pendingKingWonder){
           const kw = STATE.pub.kingWonder;
           if (kw){
-            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final value for the marked card (-1/0/+1).`);
-            else logLine(`King Wonder: ${playerName(kw.builder)} must mark 1 own non-King card.`);
+            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final card and value (-1/0/+1).`);
           }
         } else {
           if (r.flipped>0) logLine(`${r.flipped} card(s) revealed.`);
@@ -3241,16 +3209,8 @@ function maybeAIMove(){
       return;
     }
 
-    if (mv.type==="kingMark"){
-      const r = Engine.submitKingWonderOffer(STATE, [mv.id]);
-      if (!r.ok) logLine("AI (Wonder): " + r.msg);
-      render();
-      if (STATE.pub.currentPlayer===1) maybeAIMove();
-      return;
-    }
-
-    if (mv.type==="kingDelta"){
-      const r = Engine.chooseKingWonder(STATE, mv.delta, true);
+    if (mv.type==="kingFinal"){
+      const r = Engine.chooseKingWonder(STATE, {cardId: mv.cardId, delta: mv.delta}, true);
       if (!r.ok) logLine("AI (Wonder): " + r.msg);
       render();
       if (STATE.pub.currentPlayer===1) maybeAIMove();
