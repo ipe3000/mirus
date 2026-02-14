@@ -272,10 +272,8 @@
     for (let i=0;i<n;i++){
       const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
       out.push(simulateOne(starter, p0, p1));
-      if ((i+1) % 25 === 0){
-        statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
-        await new Promise(r=>setTimeout(r, 0));
-      }
+      statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
+      await new Promise(r=>setTimeout(r, 0));
     }
 
     const playerWins = out.filter(x=>x.winner==="player").length;
