@@ -1015,22 +1015,23 @@ const JOKER_SWAP_GRANTS_DOUBLE = false; // Modern start: using the Joker to beco
 // then increases progressively while the age advances.
 const MC_ADAPTIVE_OPENING_TURNS = 2;
 const MC_ADAPTIVE_EARLY_TURNS = 6;
-const MC_SIMS_OPENING = 24;
-const MC_SIMS_EARLY = 52;
-const MC_SIMS_LATE = 110;
-const AI_MOVE_MAX_MS = 10;
-const MC_ROOT_PRUNE_MARGIN = 1.8;
+const MC_SIMS_OPENING = 96;
+const MC_SIMS_EARLY = 220;
+const MC_SIMS_LATE = 420;
+const AI_MOVE_MAX_MS = 50;
+const MC_FALLBACK_MIN_REMAINING_MS = 1;
+const MC_ROOT_PRUNE_MARGIN = 2.4;
 const MC_ROOT_MIN_KEEP = 2;
-const MC_ROOT_KEEP_FRACTION = 0.5;
+const MC_ROOT_KEEP_FRACTION = 0.75;
 const MC_UCB_EXPLORATION = 1.2;
 const MC_UCB_PRIOR_BONUS = 0.35;
 const MC_ROLLOUT_MAX_PLIES = 90;
 const MC_BOOTSTRAP_WEIGHT = 0.45;
-const MC_ROLLOUT_EPSILON_START = 0.18;
-const MC_ROLLOUT_EPSILON_END = 0.08;
-const AI_CANDIDATE_K_OPENING = 6;
-const AI_CANDIDATE_K_MID = 4;
-const AI_CANDIDATE_K_LATE = 3;
+const MC_ROLLOUT_EPSILON_START = 0.10;
+const MC_ROLLOUT_EPSILON_END = 0.03;
+const AI_CANDIDATE_K_OPENING = 8;
+const AI_CANDIDATE_K_MID = 6;
+const AI_CANDIDATE_K_LATE = 4;
 
 /* ============================================================
    1) TABLEAU STRUCTURE (Mirus 2.0)
@@ -1941,7 +1942,7 @@ function aiChoose(state, options={}){
   const level = options.level || document.getElementById("aiLevel")?.value || "mc";
   if (level==="random") { const mv = aiRandom(state); report("random"); return mv; }
   if (level==="greedy") { const mv = aiGreedy(state); report("greedy"); return mv; }
-  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) { const mv = aiFastHeuristic(state); report("fast"); return mv; }
+  if ((deadline - performance.now()) <= MC_FALLBACK_MIN_REMAINING_MS) { const mv = aiFastHeuristic(state); report("fast"); return mv; }
   const mv = aiMonteCarlo(state, deadline);
   report("mc");
   return mv;
@@ -1985,7 +1986,7 @@ function chooseMoveForPlayer(state, player, options={}){
   // a quick decision for player 0.
   if (level === "random") { const mv = chooseRandomForPlayer(state, 0); report("random"); return mv; }
   if (level === "greedy") { const mv = chooseFastHeuristicForPlayer(state, 0); report("greedy"); return mv; }
-  if ((deadline - performance.now()) <= AI_MOVE_MAX_MS) { const mv = chooseFastHeuristicForPlayer(state, 0); report("fast"); return mv; }
+  if ((deadline - performance.now()) <= MC_FALLBACK_MIN_REMAINING_MS) { const mv = chooseFastHeuristicForPlayer(state, 0); report("fast"); return mv; }
 
   const mirrored = mirrorStateForPlayerZero(state);
   const mv = aiChoose(mirrored, {level, deadline});
