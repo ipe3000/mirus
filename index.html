@@ -1026,6 +1026,11 @@ const MC_UCB_EXPLORATION = 1.2;
 const MC_UCB_PRIOR_BONUS = 0.35;
 const MC_ROLLOUT_MAX_PLIES = 90;
 const MC_BOOTSTRAP_WEIGHT = 0.45;
+const MC_ROLLOUT_EPSILON_START = 0.18;
+const MC_ROLLOUT_EPSILON_END = 0.08;
+const AI_CANDIDATE_K_OPENING = 6;
+const AI_CANDIDATE_K_MID = 4;
+const AI_CANDIDATE_K_LATE = 3;
 
 /* ============================================================
    1) TABLEAU STRUCTURE (Mirus 2.0)
@@ -1998,66 +2003,16 @@ function chooseFastHeuristicForPlayer(state, player){
   const pv = Engine.getPublicView(state);
   const moves = enumerateMoves(pv, player);
   if (moves.length <= 1) return moves[0];
-
-  let best = moves[0];
-  let bestScore = -1e9;
-
-  for (const mv of moves){
-    if (mv.type !== "take"){
-      if (bestScore < -1000){ bestScore = -1000; best = mv; }
-      continue;
-    }
-    const card = pv.slots[mv.idx]?.card;
-    if (!card) continue;
-
-    let score = 0;
-    if (card.suit === "S") score += card.value * 0.8;
-    if (card.suit === "C") score += card.value * 0.35;
-    if (card.suit === "H") score += (card.value >= 7 ? 2.2 : 0.9);
-    if (card.suit === "D") score += (card.value >= 6 ? 2.8 : 1.3);
-    if (card.kind === "king") score += 4.2;
-
-    score += 0.25 * estimateDenialScore(pv, mv, player);
-    if (score > bestScore){
-      bestScore = score;
-      best = mv;
-    }
-  }
-
-  return best;
+  const top = topCandidateMoves(state, pv, moves, player);
+  return (top[0] && top[0].move) ? top[0].move : moves[0];
 }
 
 function aiFastHeuristic(state){
   const pv = Engine.getPublicView(state);
   const moves = enumerateMoves(pv, 1);
   if (moves.length <= 1) return moves[0];
-
-  let best = moves[0];
-  let bestScore = -1e9;
-
-  for (const mv of moves){
-    if (mv.type !== "take"){
-      if (bestScore < -1000){ bestScore = -1000; best = mv; }
-      continue;
-    }
-    const card = pv.slots[mv.idx]?.card;
-    if (!card) continue;
-
-    let score = 0;
-    if (card.suit === "S") score += card.value * 0.8;
-    if (card.suit === "C") score += card.value * 0.35;
-    if (card.suit === "H") score += (card.value >= 7 ? 2.2 : 0.9);
-    if (card.suit === "D") score += (card.value >= 6 ? 2.8 : 1.3);
-    if (card.kind === "king") score += 4.2;
-
-    score += 0.25 * estimateDenialScore(pv, mv, 1);
-    if (score > bestScore){
-      bestScore = score;
-      best = mv;
-    }
-  }
-
-  return best;
+  const top = topCandidateMoves(state, pv, moves, 1);
+  return (top[0] && top[0].move) ? top[0].move : moves[0];
 }
 
 function aiRandom(state){
@@ -2159,13 +2114,9 @@ function aiMonteCarlo(state, deadline=Infinity){
 }
 
 function buildRootCandidates(state, publicView, moves){
-  const scored = moves.map(mv => {
-    const base = estimateMoveValue(state, mv);
-    const denial = estimateDenialScore(publicView, mv, 1);
-    return { move: mv, score: base + denial };
-  });
+  const topScored = topCandidateMoves(state, publicView, moves, 1);
+  const scored = topScored.length ? topScored : moves.map(mv => ({move:mv, score: estimateMoveValue(state,mv), parts:{}}));
 
-  scored.sort((a,b)=>b.score-a.score);
   const top = scored[0]?.score ?? -1e9;
   const keepByMargin = scored.filter(x => x.score >= top - MC_ROOT_PRUNE_MARGIN);
 
@@ -2210,6 +2161,154 @@ function quickEvalForTaken(me, opp, age){
   const dH = (techPoints(me) - techPoints(opp)) * wH;
   const pen = 0.6 * (Math.max(0, countValue(me,5)-2) + Math.max(0, countValue(me,10)-2));
   return dS + dC + dD + dH - pen;
+}
+
+
+function aiCandidateKForPublicView(publicView){
+  const age = publicView.age;
+  const inAge = publicView.taken[0].concat(publicView.taken[1]).filter(c=>c.age===age).length;
+  if (inAge < 3) return AI_CANDIDATE_K_OPENING;
+  if (inAge < 10) return AI_CANDIDATE_K_MID;
+  return AI_CANDIDATE_K_LATE;
+}
+
+function heartsMarginalGain(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="H") return 0;
+  return techPoints(cards.concat([card])) - techPoints(cards);
+}
+
+function foodMarginalGain(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="C") return 0;
+  return foodPoints(cards.concat([card])) - foodPoints(cards);
+}
+
+function kingLeverageScore(me, opp, card){
+  if (!card || card.kind!=="king") return 0;
+  const myKings = countKingsInCards(me);
+  const oppKings = countKingsInCards(opp);
+  let score = 4.0;
+  if (myKings===2) score += 9.0;
+  if (oppKings===2) score += 6.0;
+  return score;
+}
+
+function wouldCompleteCalamity(cards, card, value){
+  if (!card || card.kind!=="card" || card.value!==value) return false;
+  const suits = new Set();
+  for (const c of cards){
+    if (c.kind==="card" && c.value===value) suits.add(c.suit);
+  }
+  suits.add(card.suit);
+  return suits.size===4;
+}
+
+function revealPenalty(publicView, mv, perspective){
+  if (mv.type!=="take") return 0;
+  const idx = mv.idx;
+  const slot = publicView.slots[idx];
+  if (!slot || slot.faceDown || slot.removed) return 0;
+  const row = Number(slot.row);
+  const col = Number(slot.col);
+  if (!Number.isFinite(row) || !Number.isFinite(col)) return 0;
+
+  let penalty = 0;
+  const blockers = [
+    {r: row-1, c: col-1},
+    {r: row-1, c: col}
+  ];
+  for (const b of blockers){
+    const bl = publicView.slots.find(s => Number(s.row)===b.r && Number(s.col)===b.c);
+    if (!bl || bl.removed || !bl.faceDown) continue;
+
+    let expected = 0.65;
+    // Approx expected leverage from unknown card: Kings, hearts bridges, culture ladders.
+    if (publicView.age==="modern") expected += 0.35;
+    const me = publicView.taken[perspective];
+    const opp = publicView.taken[1-perspective];
+    const myKings = countKingsInCards(me);
+    const oppKings = countKingsInCards(opp);
+    if (myKings===2 || oppKings===2) expected += 0.55;
+
+    penalty += expected;
+  }
+  return penalty;
+}
+
+function tempoGivePenalty(publicView, state, mv, perspective){
+  if (mv.type!=="take") return 0;
+  const sim = cloneEngineStateForSim(state);
+  applyAIMoveToSim(sim, mv);
+  const pv2 = Engine.getPublicView(sim);
+  const opp = 1 - perspective;
+  const moves = enumerateMoves(pv2, opp).filter(m=>m.type==="take");
+  if (!moves.length) return 0;
+
+  let bestThreat = 0;
+  for (const m of moves){
+    const c = pv2.slots[m.idx]?.card;
+    if (!c) continue;
+    const oppCards = pv2.taken[opp];
+    const meCards = pv2.taken[perspective];
+    let threat = 0;
+    if (c.kind==="king") threat += 2.8;
+    threat += 0.9 * heartsMarginalGain(oppCards, c);
+    threat += 0.8 * foodMarginalGain(oppCards, c);
+    threat += 0.35 * Math.max(0, estimateDenialScore(pv2, m, opp));
+    if (c.suit==="D"){
+      const before = cultureContestVP(meCards, oppCards);
+      const afterOpp = cultureContestVP(meCards, oppCards.concat([c]));
+      threat += Math.max(0, (afterOpp.a - before.a));
+    }
+    if (threat > bestThreat) bestThreat = threat;
+  }
+
+  return 0.18 * moves.length + 0.45 * bestThreat;
+}
+
+function scoreCandidateMove(state, publicView, mv, perspective){
+  if (mv.type!=="take"){
+    if (mv.type==="wonder") return {score: 1.2, parts:{special:1.2}};
+    if (mv.type==="modernSwap") return {score: 0.9, parts:{special:0.9}};
+    if (mv.type==="kingFinal") return {score: 0.4, parts:{special:0.4}};
+    return {score: -1000, parts:{special:-1000}};
+  }
+
+  const card = publicView.slots[mv.idx]?.card;
+  if (!card) return {score: -1000, parts:{missing:-1000}};
+
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+
+  const foodGain = foodMarginalGain(me, card);
+  const heartsGain = heartsMarginalGain(me, card);
+  const meBase = quickEvalForTaken(me, opp, publicView.age);
+  const meAfter = quickEvalForTaken(me.concat([card]), opp, publicView.age);
+  const selfGain = (meAfter - meBase) + 1.2*foodGain + 0.9*heartsGain + kingLeverageScore(me, opp, card);
+
+  const denyGain = estimateDenialScore(publicView, mv, perspective);
+  const reveal = revealPenalty(publicView, mv, perspective);
+  const tempo = tempoGivePenalty(publicView, state, mv, perspective);
+
+  let risk = 0;
+  if (wouldCompleteCalamity(me, card, 5)) risk += 5.5;
+  if (wouldCompleteCalamity(me, card, 10)) risk += 7.5;
+  if (card.suit==="H" && heartsGain<=0) risk += 1.2;
+  if (card.suit==="C" && foodGain<=0) risk += 0.7;
+
+  return {
+    score: selfGain + denyGain - reveal - tempo - risk,
+    parts: {selfGain, denyGain, reveal, tempo, risk}
+  };
+}
+
+function topCandidateMoves(state, publicView, moves, perspective){
+  const k = aiCandidateKForPublicView(publicView);
+  const scored = moves.map(mv => {
+    const s = scoreCandidateMove(state, publicView, mv, perspective);
+    return {move: mv, score: s.score, parts: s.parts};
+  });
+  scored.sort((a,b)=>b.score-a.score);
+  return scored.slice(0, Math.min(k, scored.length));
 }
 
 function pickRootMoveByUcb(acc, counts, priors, sims){
@@ -2304,16 +2403,11 @@ function playoutSim(sim){
     if (MC_PLAYOUT==="random"){
       mv = moves[randInt(moves.length)];
     } else {
-      // greedy dal punto di vista del player
-      let best = moves[0], bestScore = -1e9;
-      for(const m of moves){
-        const s2 = cloneEngineStateForSim(sim);
-        applyAIMoveToSim(s2, m);
-        const pv2 = Engine.getPublicView(s2);
-        const score = quickEval(pv2, player);
-        if (score>bestScore){ bestScore=score; best=m; }
-      }
-      mv = best;
+      const top = topCandidateMoves(sim, pv, moves, player);
+      const eps = MC_ROLLOUT_EPSILON_START + (MC_ROLLOUT_EPSILON_END - MC_ROLLOUT_EPSILON_START) * Math.min(1, guard / 40);
+      if (top.length && Math.random() > eps) mv = top[0].move;
+      else if (top.length) mv = top[randInt(top.length)].move;
+      else mv = moves[randInt(moves.length)];
     }
     applyAIMoveToSim(sim, mv);
 
