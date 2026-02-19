@@ -543,8 +543,12 @@
       acc[k] = (acc[k] || 0) + 1;
       return acc;
     }, {});
-    const wonderWinRatePlayer = pct(out.filter(x=>x.suits.wonder.human !== 0 && x.winner === "player").length, out.filter(x=>x.suits.wonder.human !== 0).length);
-    const wonderWinRateAI = pct(out.filter(x=>x.suits.wonder.ai !== 0 && x.winner === "ai").length, out.filter(x=>x.suits.wonder.ai !== 0).length);
+    // Condizionale su "Meraviglia costruita": almeno 3 Re raccolti in partita,
+    // indipendentemente dal delta finale scelto sulla carta marcata.
+    const wonderBuiltByPlayer = out.filter(x=>x.kings.human >= 3);
+    const wonderBuiltByAI = out.filter(x=>x.kings.ai >= 3);
+    const wonderWinRatePlayer = pct(wonderBuiltByPlayer.filter(x=>x.winner === "player").length, wonderBuiltByPlayer.length);
+    const wonderWinRateAI = pct(wonderBuiltByAI.filter(x=>x.winner === "ai").length, wonderBuiltByAI.length);
     const swingH = {
       spades: avg(out.map(x=>x.wonderCategorySwing.human.spades)),
       diamonds: avg(out.map(x=>x.wonderCategorySwing.human.diamonds)),
