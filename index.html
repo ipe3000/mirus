@@ -616,8 +616,8 @@ button.ghost{
 body.playing header{ display:none; }
 
 /* Show an in-game Leader button inside the side panel header (header is hidden while playing) */
-#wonderBtnSide{ display:none; }
-body.playing #wonderBtnSide{ display:inline-flex; }
+#leaderBtnSide{ display:none; }
+body.playing #leaderBtnSide{ display:inline-flex; }
 
 
 /* === King Wonder overlay (Mirus 2.0) === */
@@ -876,7 +876,7 @@ body.playing #wonderBtnSide{ display:inline-flex; }
         <input type="checkbox" id="debugIdx" />
       </label>
       <button class="primary" id="newGameBtn">New game</button>
-      <button id="wonderBtn">Use Leader</button>
+      <button id="leaderBtn">Use Leader</button>
     </div>
   </div>
 </header>
@@ -904,7 +904,7 @@ body.playing #wonderBtnSide{ display:inline-flex; }
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="logOpenBtn" class="ghost" title="Open the log">Log</button>
-          <button class="primary" id="wonderBtnSide" title="Use the Leader">Leader</button>
+          <button class="primary" id="leaderBtnSide" title="Use the Leader">Leader</button>
           <div class="pill" id="scorePill">Score: –</div>
         </div>
       </div>
@@ -1966,7 +1966,7 @@ function enumerateMoves(publicView, player){
   if (Engine.canUseModernSwap(publicView, player)) moves.push({type:"modernSwap"});
 
   // Joker double
-  if (Engine.canUseJokerDouble(publicView, player)) moves.push({type:"wonder"});
+  if (Engine.canUseJokerDouble(publicView, player)) moves.push({type:"leader"});
 
   // Take
   for(let i=0;i<publicView.slots.length;i++){
@@ -2362,7 +2362,7 @@ function tempoGivePenalty(publicView, state, mv, perspective){
 
 function scoreCandidateMove(state, publicView, mv, perspective){
   if (mv.type!=="take"){
-    if (mv.type==="wonder") return {score: 1.2, parts:{special:1.2}};
+    if (mv.type==="leader") return {score: 1.2, parts:{special:1.2}};
     if (mv.type==="modernSwap") return {score: 0.9, parts:{special:0.9}};
     if (mv.type==="kingFinal") return {score: 0.4, parts:{special:0.4}};
     return {score: -1000, parts:{special:-1000}};
@@ -2470,7 +2470,7 @@ function applyAIMoveToSim(sim, mv){
     Engine.useModernSwap(sim, 1);
     return;
   }
-  if (mv.type==="wonder"){
+  if (mv.type==="leader"){
     Engine.useJokerDouble(sim);
     return;
   }
@@ -2529,8 +2529,8 @@ const elScorePill = document.getElementById("scorePill");
 const elStatusLine = document.getElementById("statusLine");
 const elCompareBody = document.getElementById("compareBody");
 const btnNew = document.getElementById("newGameBtn");
-const btnWonder = document.getElementById("wonderBtn");
-const btnWonderSide = document.getElementById("wonderBtnSide");
+const btnLeader = document.getElementById("leaderBtn");
+const btnLeaderSide = document.getElementById("leaderBtnSide");
 const cbDebug = document.getElementById("debugIdx");
 
 const elModal = document.getElementById("modalOverlay");
@@ -3171,7 +3171,7 @@ btnNew.addEventListener("click", ()=>{
   maybeAIMove();
 });
 
-btnWonder.addEventListener("click", ()=>{
+btnLeader.addEventListener("click", ()=>{
   if (!STATE) return;
   if (STATE.pub.ended) return;
   if (MODAL_OPEN) return;
@@ -3183,7 +3183,7 @@ btnWonder.addEventListener("click", ()=>{
   maybeAIMove();
 });
 
-if (btnWonderSide) btnWonderSide.addEventListener("click", ()=>{ if (btnWonder) btnWonder.click(); });
+if (btnLeaderSide) btnLeaderSide.addEventListener("click", ()=>{ if (btnLeader) btnLeader.click(); });
 
 function summarize(cards){
   const s = sumSuit(cards,"S");
@@ -3430,7 +3430,7 @@ function render(){
     elStatusLine.textContent="Press “New game”.";
     elTableau.innerHTML="";
     if (elCompareBody) elCompareBody.innerHTML = "";
-    if (btnWonderSide) btnWonderSide.disabled = true;
+    if (btnLeaderSide) btnLeaderSide.disabled = true;
     return;
   }
   const pub = STATE.pub;
@@ -3483,9 +3483,9 @@ function render(){
   `;
 
 
-  // Wonder (effect: 2 picks this turn)
-  btnWonder.disabled = pub.ended || pub.currentPlayer!==0 || ( !Engine.canUseJokerDouble(pub,0) );
-  if (btnWonderSide) btnWonderSide.disabled = btnWonder.disabled;
+  // Leader (effect: 2 picks this turn)
+  btnLeader.disabled = pub.ended || pub.currentPlayer!==0 || ( !Engine.canUseJokerDouble(pub,0) );
+  if (btnLeaderSide) btnLeaderSide.disabled = btnLeader.disabled;
 
   // tableau render (ordine visivo dal layout ufficiale)
   // Importantissimo: aggiorna prima le CSS vars (cardW/cardH/colGap) e poi calcola la geometria
@@ -3608,7 +3608,7 @@ function maybeAIMove(){
       return;
     }
 
-    if (mv.type==="wonder"){
+    if (mv.type==="leader"){
       const r = Engine.useJokerDouble(STATE);
       if (r.ok) logLine("AI uses the Leader: 2 picks this turn.");
       render();
