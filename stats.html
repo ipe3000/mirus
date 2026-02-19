@@ -549,6 +549,13 @@
     const wonderBuiltByAI = out.filter(x=>x.kings.ai >= 3);
     const wonderWinRatePlayer = pct(wonderBuiltByPlayer.filter(x=>x.winner === "player").length, wonderBuiltByPlayer.length);
     const wonderWinRateAI = pct(wonderBuiltByAI.filter(x=>x.winner === "ai").length, wonderBuiltByAI.length);
+    // Per evitare ambiguità: se entrambi costruiscono la Meraviglia nella stessa partita,
+    // uno dei due perderà comunque. Questo indicatore misura il vantaggio quando
+    // solo un lato riesce ad attivarla.
+    const wonderBuiltOnlyPlayer = out.filter(x=>x.kings.human >= 3 && x.kings.ai < 3);
+    const wonderBuiltOnlyAI = out.filter(x=>x.kings.ai >= 3 && x.kings.human < 3);
+    const wonderWinRateOnlyBuilderPlayer = pct(wonderBuiltOnlyPlayer.filter(x=>x.winner === "player").length, wonderBuiltOnlyPlayer.length);
+    const wonderWinRateOnlyBuilderAI = pct(wonderBuiltOnlyAI.filter(x=>x.winner === "ai").length, wonderBuiltOnlyAI.length);
     const swingH = {
       spades: avg(out.map(x=>x.wonderCategorySwing.human.spades)),
       diamonds: avg(out.map(x=>x.wonderCategorySwing.human.diamonds)),
@@ -635,6 +642,7 @@
       ["Calamità 10 (malus medio)", avg(out.map(x=>x.suits.calamities.modern10.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.modern10.ai)).toFixed(2)],
       ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
       ["Meraviglia (win% con Meraviglia)", wonderWinRatePlayer, wonderWinRateAI],
+      ["Meraviglia (win% quando solo io la costruisco)", wonderWinRateOnlyBuilderPlayer, wonderWinRateOnlyBuilderAI],
       ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
       ["Meraviglia swing medio Δ♠", swingH.spades.toFixed(2), swingA.spades.toFixed(2)],
       ["Meraviglia swing medio Δ♦", swingH.diamonds.toFixed(2), swingA.diamonds.toFixed(2)],
