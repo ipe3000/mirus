@@ -1302,9 +1302,18 @@ function countKingsInCards(cards){
   for (const c of cards){ if (c && c.kind === "king") k++; }
   return k;
 }
-function wonderTieOwner(hCards, aCards){
-  const hHasWonder = countKingsInCards(hCards) >= 3;
-  const aHasWonder = countKingsInCards(aCards) >= 3;
+function wonderTieOwner(hCards, aCards, scoringOpts=null){
+  if (scoringOpts && scoringOpts.disableAllWonderTieBreaks) return null;
+
+  let hHasWonder = countKingsInCards(hCards) >= 3;
+  let aHasWonder = countKingsInCards(aCards) >= 3;
+
+  const disabled = scoringOpts && Array.isArray(scoringOpts.disableWonderForPlayer)
+    ? scoringOpts.disableWonderForPlayer
+    : null;
+  if (disabled?.[0]) hHasWonder = false;
+  if (disabled?.[1]) aHasWonder = false;
+
   if (hHasWonder && !aHasWonder) return 0;
   if (aHasWonder && !hHasWonder) return 1;
   return null;
@@ -1379,7 +1388,7 @@ function cultureVP(cards){
   return {vp, runs};
 }
 
-function cultureContestVP(hCards, aCards, wonderMods=null){
+function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
   // Global, contested Culture (Mirus 2.0): award tiers are assigned across BOTH players' ♦ sequences.
   // Tier 1: +10 to the best sequence (len ≥ 2)
   // Tier 2: +5 to the second-best sequence (len ≥ 2)
@@ -1398,7 +1407,7 @@ function cultureContestVP(hCards, aCards, wonderMods=null){
   let bestGroup = [];
   let secondGroup = [];
 
-  const tieOwner = wonderTieOwner(hCards, aCards);
+  const tieOwner = wonderTieOwner(hCards, aCards, scoringOpts);
 
   if (cand.length){
     const bestKey = cand[0].key;
@@ -1447,11 +1456,11 @@ function ancientScoring(hAnc, aAnc){
   return {human:h, ai:a, detail:{hs,as}};
 }
 
-function modernScoring(allH, allA, wonderMods=null){
+function modernScoring(allH, allA, wonderMods=null, scoringOpts=null){
   let h=0, a=0;
   const hs = sumSuit(allH,"S", wonderMods);
   const as = sumSuit(allA,"S", wonderMods);
-  const tieOwner = wonderTieOwner(allH, allA);
+  const tieOwner = wonderTieOwner(allH, allA, scoringOpts);
   if (hs>as) h+=8;
   else if (as>hs) a+=8;
   else if (tieOwner===0) h+=8;
@@ -1460,7 +1469,7 @@ function modernScoring(allH, allA, wonderMods=null){
   h += foodPoints(allH, wonderMods); a += foodPoints(allA, wonderMods);
 
 
-  const cult = cultureContestVP(allH, allA, wonderMods);
+  const cult = cultureContestVP(allH, allA, wonderMods, scoringOpts);
   h += cult.h;
   a += cult.a;
 
@@ -1473,11 +1482,11 @@ function modernScoring(allH, allA, wonderMods=null){
   return {human:h, ai:a, detail:{hs,as,cult}};
 }
 
-function totalScoring(allH, allA, wonderMods=null){
+function totalScoring(allH, allA, wonderMods=null, scoringOpts=null){
   const hAnc = allH.filter(c=>c.age==="ancient");
   const aAnc = allA.filter(c=>c.age==="ancient");
   const anc = ancientScoring(hAnc, aAnc);
-  const mod = modernScoring(allH, allA, wonderMods);
+  const mod = modernScoring(allH, allA, wonderMods, scoringOpts);
   return {
     human: anc.human + mod.human,
     ai: anc.ai + mod.ai,
