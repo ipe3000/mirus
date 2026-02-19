@@ -2607,7 +2607,7 @@ function playoutSim(sim){
    ============================================================ */
 
 let STATE = null;
-let LAST_AI_PICK_IDS = [];
+let LAST_AI_PICK_ID = null;
 
 const elTableau = document.getElementById("tableau");
 const elLog = document.getElementById("log");
@@ -3253,7 +3253,7 @@ btnModalNo.addEventListener("click", ()=>{
 btnNew.addEventListener("click", ()=>{
   const starter = document.getElementById("whoStarts").value;
   STATE = Engine.newGame(starter);
-  LAST_AI_PICK_IDS = [];
+  LAST_AI_PICK_ID = null;
   END_SHOWN = false; closeEndOverlay(); closeLogOverlay();
   clearLog();
   logLine(`New game. Starting: ${playerName(STATE.pub.currentPlayer)}.`);
@@ -3429,11 +3429,9 @@ function renderHands(){
       else for (const c of chips) addChip(values, c);
     }
 
-    const lastAiCards = (!own.isHuman && LAST_AI_PICK_IDS.length)
-      ? _cardsForIds(LAST_AI_PICK_IDS).filter(c=>c && c.kind==="card" && c.suit===suit)
-      : [];
-    for (const c of lastAiCards){
-      addChip(values, `Last AI: ${cardLabel(c)}`, {lastAi:true});
+    const lastAiCard = (!own.isHuman && LAST_AI_PICK_ID) ? _findCardById(LAST_AI_PICK_ID) : null;
+    if (lastAiCard && lastAiCard.kind==="card" && lastAiCard.suit===suit){
+      addChip(values, `Last AI: ${cardLabel(lastAiCard)}`, {lastAi:true});
     }
 
     if (own.markedCard && own.markedCard.suit === suit){
@@ -3607,8 +3605,7 @@ function render(){
       el.className="card";
       if (!s.removed) el.classList.add("clickable");
       if (s.removed) el.classList.add("removed");
-      const isLastAiGhost = (s.removed && s.card && LAST_AI_PICK_IDS.includes(s.card.id) && pub.currentPlayer===0);
-      if (isLastAiGhost) el.classList.add("lastAiGhost");
+      if (s.removed && LAST_AI_PICK_ID && s.card && s.card.id===LAST_AI_PICK_ID && pub.currentPlayer===0) el.classList.add("lastAiGhost");
       if (s.faceDown && !s.removed) el.classList.add("faceDown");
 
       if (!s.removed && !s.faceDown && s.card){
@@ -3648,7 +3645,7 @@ function render(){
         if (!Engine.isAccessible(STATE.pub, idx)) return;
 
         const beforeAge = STATE.pub.age;
-        LAST_AI_PICK_IDS = [];
+        LAST_AI_PICK_ID = null;
         const r = Engine.take(STATE, idx);
         if (!r.ok){ logLine(r.msg); render(); return; }
 
@@ -3723,9 +3720,7 @@ function maybeAIMove(){
       const beforeAge = STATE.pub.age;
       const r = Engine.take(STATE, mv.idx);
       if (r.ok){
-        if (sl && sl.card && sl.card.id){
-          if (!LAST_AI_PICK_IDS.includes(sl.card.id)) LAST_AI_PICK_IDS.push(sl.card.id);
-        }
+        LAST_AI_PICK_ID = sl && sl.card ? sl.card.id : null;
         logLine(`AI takes ${cardLabel(sl.card)}.`);
 
         if (r.pendingKingWonder){
