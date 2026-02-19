@@ -215,7 +215,7 @@
     if (!mv) return;
     if (mv.type === "kingFinal") { Core.Engine.chooseKingWonder(state, {cardId: mv.cardId, delta: mv.delta}, true); return; }
     if (mv.type === "modernSwap") { Core.Engine.useModernSwap(state, player); return; }
-    if (mv.type === "wonder") { Core.Engine.useJokerDouble(state); return; }
+    if (mv.type === "leader") { Core.Engine.useJokerDouble(state); return; }
     if (mv.type === "take") { Core.Engine.take(state, mv.idx); return; }
     if (mv.type === "pass") { state.pub.picksLeftThisTurn = 1; state.pub.currentPlayer = 1 - state.pub.currentPlayer; }
   }
@@ -304,7 +304,7 @@
 
   function simulateOne(startingPlayer, p0Level, p1Level, perf){
     const state = Core.Engine.newGame(startingPlayer);
-    const events = {playerWonder:0, aiWonder:0, playerSwap:0, aiSwap:0, kingChoices:0};
+    const events = {playerLeader:0, aiLeader:0, playerSwap:0, aiSwap:0, kingChoices:0};
 
     let guard = 0;
     while(!state.pub.ended && guard < 600){
@@ -326,7 +326,7 @@
       const p = state.pub.currentPlayer;
       const level = p===0 ? p0Level : p1Level;
       const mv = chooseForPlayer(state, p, level, perf);
-      if (mv?.type === "wonder") p===0 ? events.playerWonder++ : events.aiWonder++;
+      if (mv?.type === "leader") p===0 ? events.playerLeader++ : events.aiLeader++;
       if (mv?.type === "modernSwap") p===0 ? events.playerSwap++ : events.aiSwap++;
       if (mv?.type === "kingFinal") events.kingChoices++;
       applyMove(state, p, mv);
@@ -460,8 +460,8 @@
     ]);
 
     renderRows(els.eventTable, [
-      ["Leader Player", (eventTotals.playerWonder / out.length).toFixed(3)],
-      ["Leader AI", (eventTotals.aiWonder / out.length).toFixed(3)],
+      ["Leader Player", (eventTotals.playerLeader / out.length).toFixed(3)],
+      ["Leader AI", (eventTotals.aiLeader / out.length).toFixed(3)],
       ["Swap Modern Player", (eventTotals.playerSwap / out.length).toFixed(3)],
       ["Swap Modern AI", (eventTotals.aiSwap / out.length).toFixed(3)],
       ["King final choice", (eventTotals.kingChoices / out.length).toFixed(3)],
