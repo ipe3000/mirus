@@ -53,11 +53,25 @@
             <option value="mc" selected>Monte Carlo</option>
           </select>
         </label>
+        <label>Uso Leader Player
+          <select id="playerLeaderMode">
+            <option value="ancient">Leader forzato solo in Ancient Age</option>
+            <option value="modern">Leader forzato solo in Modern Age</option>
+            <option value="free" selected>Leader libero</option>
+          </select>
+        </label>
         <label>Strategia AI
           <select id="aiStrategy">
             <option value="random">Random</option>
             <option value="greedy">Greedy</option>
             <option value="mc" selected>Monte Carlo</option>
+          </select>
+        </label>
+        <label>Uso Leader AI
+          <select id="aiLeaderMode">
+            <option value="ancient">Leader forzato solo in Ancient Age</option>
+            <option value="modern">Leader forzato solo in Modern Age</option>
+            <option value="free" selected>Leader libero</option>
           </select>
         </label>
         <label>Parte per primo
@@ -189,10 +203,23 @@
     return sorted[lo] + (sorted[hi] - sorted[lo]) * (p - lo);
   }
 
-  function chooseForPlayer(state, player, level, perf){
+  function enforceLeaderMode(move, player, leaderMode, state){
+    if (!move || move.type !== "leader" || leaderMode === "free") return move;
+    const age = state.pub.age;
+    const blockedByAge =
+      (leaderMode === "ancient" && age !== "ancient") ||
+      (leaderMode === "modern" && age !== "modern");
+    if (!blockedByAge) return move;
+
+    const fallback = Core.enumerateMoves(Core.Engine.getPublicView(state), player)
+      .find(m=>m.type !== "leader");
+    return fallback || move;
+  }
+
+  function chooseForPlayer(state, player, level, leaderMode, perf){
     if (typeof Core.chooseMoveForPlayer === "function"){
       const coreNow = frame.contentWindow?.performance?.now ? frame.contentWindow.performance.now() : performance.now();
-      return Core.chooseMoveForPlayer(state, player, {
+      const move = Core.chooseMoveForPlayer(state, player, {
         level,
         deadline: coreNow + BATCH_MOVE_BUDGET_MS,
         debugSink: perf ? (entry)=>{
@@ -204,11 +231,13 @@
           perf.byLevel[entry.level] = (perf.byLevel[entry.level] || 0) + entry.elapsedMs;
         } : null
       });
+      return enforceLeaderMode(move, player, leaderMode, state);
     }
 
     const pv = Core.Engine.getPublicView(state);
     const moves = Core.enumerateMoves(pv, player);
-    return moves.length ? moves[0] : null;
+    const selected = moves.length ? moves[0] : null;
+    return enforceLeaderMode(selected, player, leaderMode, state);
   }
 
   function applyMove(state, player, mv){
@@ -307,7 +336,7 @@
     };
   }
 
-  function simulateOne(startingPlayer, p0Level, p1Level, perf){
+  function simulateOne(startingPlayer, p0Level, p1Level, p0LeaderMode, p1LeaderMode, perf){
     const state = Core.Engine.newGame(startingPlayer);
     const events = {playerLeader:0, aiLeader:0, playerSwap:0, aiSwap:0, kingChoices:0};
     const leaderTiming = [];
@@ -324,7 +353,8 @@
       for (const candidate of [0,1]){
         if (!Core.Engine.canUseModernSwap(state.pub, candidate)) continue;
         const level = candidate===0 ? p0Level : p1Level;
-        const mv = chooseForPlayer(state, candidate, level, perf);
+        const leaderMode = candidate===0 ? p0LeaderMode : p1LeaderMode;
+        const mv = chooseForPlayer(state, candidate, level, leaderMode, perf);
         if (mv?.type === "modernSwap"){
           candidate===0 ? events.playerSwap++ : events.aiSwap++;
           applyMove(state, candidate, mv);
@@ -336,7 +366,8 @@
       turnNo++;
       const ageBeforeMove = state.pub.age;
       const level = p===0 ? p0Level : p1Level;
-      const mv = chooseForPlayer(state, p, level, perf);
+      const leaderMode = p===0 ? p0LeaderMode : p1LeaderMode;
+      const mv = chooseForPlayer(state, p, level, leaderMode, perf);
       if (mv?.type === "leader"){
         p===0 ? events.playerLeader++ : events.aiLeader++;
         leaderTiming.push({player:p, turn:turnNo, age:ageBeforeMove});
@@ -630,6 +661,8 @@
     const n = Math.max(1, Math.min(20000, Number(document.getElementById("games").value) || 1000));
     const p0 = document.getElementById("playerStrategy").value;
     const p1 = document.getElementById("aiStrategy").value;
+    const p0LeaderMode = document.getElementById("playerLeaderMode").value;
+    const p1LeaderMode = document.getElementById("aiLeaderMode").value;
     const startMode = document.getElementById("startMode").value;
 
     runBtn.disabled = true;
@@ -642,7 +675,7 @@
     try {
       for (let i=0;i<n;i++){
         const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
-        out.push(simulateOne(starter, p0, p1, perf));
+        out.push(simulateOne(starter, p0, p1, p0LeaderMode, p1LeaderMode, perf));
         const done = i + 1;
         statusEl.textContent = `Simulazione in corso: ${done}/${n}`;
         if (done % 15 === 0 || done === n){
