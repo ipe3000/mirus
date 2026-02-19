@@ -1244,6 +1244,25 @@ function effectiveCardValue(card, wonderMods){
   return card.value;
 }
 
+function isValidWonderDeltaForCard(cards, cardId, delta, wonderMods=null){
+  if (!cardId) return false;
+  if (![-2,-1,0,1,2].includes(delta)) return false;
+  const selected = cards.find(c=>c && c.kind==="card" && c.id===cardId);
+  if (!selected) return false;
+  const finalValue = selected.value + delta;
+  if (finalValue < 1 || finalValue > 10) return false;
+  for (const c of cards){
+    if (!c || c.kind!=="card" || c.id===cardId) continue;
+    const v = effectiveCardValue(c, wonderMods);
+    if (c.suit===selected.suit && v===finalValue) return false;
+  }
+  return true;
+}
+
+function legalWonderDeltas(cards, cardId, wonderMods=null){
+  return [-2,-1,0,1,2].filter(delta => isValidWonderDeltaForCard(cards, cardId, delta, wonderMods));
+}
+
 function sumSuit(cards, suit, wonderMods=null){
   let s=0;
   for(const c of cards){
@@ -1264,10 +1283,10 @@ function valuesSet(cards, suit, wonderMods=null){
 function valueLabel(v){
   return (v===1) ? "A" : String(v);
 }
-function suitValues(cards, suit){
+function suitValues(cards, suit, wonderMods=null){
   return cards
     .filter(c => c && c.kind==="card" && c.suit===suit)
-    .map(c => c.value)
+    .map(c => effectiveCardValue(c, wonderMods))
     .sort((a,b)=>a-b);
 }
 function countValue(cards, value){
@@ -1418,10 +1437,10 @@ function foodPoints(cards, wonderMods=null){
   return Math.floor(sumSuit(cards,"C", wonderMods)/5);
 }
 
-function ancientScoring(hAnc, aAnc, wonderMods=null){
+function ancientScoring(hAnc, aAnc){
   let h=0, a=0;
-  const hs = sumSuit(hAnc,"S", wonderMods);
-  const as = sumSuit(aAnc,"S", wonderMods);
+  const hs = sumSuit(hAnc,"S", null);
+  const as = sumSuit(aAnc,"S", null);
   if (hs>as) h+=4; else if (as>hs) a+=4;
   if (hasAllFourOfValue(hAnc,5)) h-=3;
   if (hasAllFourOfValue(aAnc,5)) a-=3;
@@ -1457,7 +1476,7 @@ function modernScoring(allH, allA, wonderMods=null){
 function totalScoring(allH, allA, wonderMods=null){
   const hAnc = allH.filter(c=>c.age==="ancient");
   const aAnc = allA.filter(c=>c.age==="ancient");
-  const anc = ancientScoring(hAnc, aAnc, wonderMods);
+  const anc = ancientScoring(hAnc, aAnc);
   const mod = modernScoring(allH, allA, wonderMods);
   return {
     human: anc.human + mod.human,
@@ -1480,8 +1499,19 @@ const Engine = (() => {
     if (deck.length !== layout.blockers.length) throw new Error("Deck size mismatch.");
 
     // Public slots: {removed, faceDown, card?} with `card` populated only if face-up.
+    const slotGeo = Array.from({length:deck.length}, ()=>({row:null,col:null}));
+    for (let row=0; row<layout.rows.length; row++){
+      const rowItems = layout.rows[row] || [];
+      for (let col=0; col<rowItems.length; col++){
+        const idx = rowItems[col];
+        if (idx>=0 && idx<slotGeo.length) slotGeo[idx] = {row, col};
+      }
+    }
+
     const slots = Array.from({length:deck.length}, (_,i)=>({
       idx:i,
+      row: slotGeo[i].row,
+      col: slotGeo[i].col,
       removed:false,
       faceDown: (layout.facePattern[i]==="B"),
       card: null
@@ -1669,7 +1699,7 @@ const Engine = (() => {
       if (pub.age === "ancient"){
         const hAnc = pub.taken[0].filter(c=>c.age==="ancient");
         const aAnc = pub.taken[1].filter(c=>c.age==="ancient");
-        const sc = ancientScoring(hAnc, aAnc, wonderModsFromState(pub));
+        const sc = ancientScoring(hAnc, aAnc);
         pub.score.human += sc.human;
         pub.score.ai += sc.ai;
 
@@ -1704,16 +1734,17 @@ const Engine = (() => {
             pub.wonderMark[pendingFinal].finalChoicePending = false;
             pub.wonderMark[pendingFinal].delta = 0;
           } else {
+          const eligibleDeltaByCardId = {};
+          for (const cardId of eligibleIds){
+            eligibleDeltaByCardId[cardId] = legalWonderDeltas(pub.taken[pendingFinal], cardId, wonderModsFromState(pub));
+          }
           pub.kingWonder = {
             phase: "finalChoice",
             builder: pendingFinal,
             eligibleIds,
-            eligibleDelta: [-2,-1,0,1,2],
+            eligibleDeltaByCardId,
             pendingFinalize: true
           };
-          if (pendingFinal===1 && !state.__sim){
-            return autoResolveKingWonder(state);
-          }
           return {ok:true, pendingKingWonder:true, flipped};
           }
         }
@@ -1762,6 +1793,10 @@ const Engine = (() => {
     const marked = pub.taken[builder].find(c=>c && c.kind==="card" && c.id===chosenCardId);
     if (!marked) return {ok:false, msg:"Missing selected card."};
 
+    if (!isValidWonderDeltaForCard(pub.taken[builder], marked.id, delta, wonderModsFromState(pub))){
+      return {ok:false, msg:"Illegal final value: out of range or duplicate suit/value."};
+    }
+
     wm.cardId = marked.id;
     wm.cardBaseValue = marked.value;
     wm.pending = false;
@@ -1795,13 +1830,18 @@ const Engine = (() => {
       }
       const scores = [];
       for (const cardId of eligibleIds){
-        for (const delta of [-2,-1,0,1,2]){
         const tmp = (typeof structuredClone === "function") ? structuredClone(pub) : JSON.parse(JSON.stringify(pub));
-        tmp.wonderMark[kw.builder].cardId = cardId;
-        tmp.wonderMark[kw.builder].delta = delta;
-        const t = totalScoring(tmp.taken[0], tmp.taken[1], wonderModsFromState(tmp));
+        const deltas = legalWonderDeltas(tmp.taken[kw.builder], cardId, wonderModsFromState(tmp));
+        for (const delta of deltas){
+          tmp.wonderMark[kw.builder].cardId = cardId;
+          tmp.wonderMark[kw.builder].delta = delta;
+          const t = totalScoring(tmp.taken[0], tmp.taken[1], wonderModsFromState(tmp));
           scores.push({cardId, delta, val: t.ai - t.human});
         }
+      }
+      if (!scores.length){
+        pub.kingWonder = null;
+        return finalizeAfterTake(state);
       }
       scores.sort((a,b)=>b.val-a.val || b.delta-a.delta || String(a.cardId).localeCompare(String(b.cardId)));
       return chooseKingWonder(state, {cardId: scores[0].cardId, delta: scores[0].delta}, true);
@@ -1903,7 +1943,9 @@ function enumerateMoves(publicView, player){
       if (!ids.length) return [{type:"pass"}];
       const moves = [];
       for (const id of ids){
-        for (const delta of [-2,-1,0,1,2]) moves.push({type:"kingFinal", cardId:id, delta});
+        const legal = kw.eligibleDeltaByCardId?.[id];
+        const deltas = (Array.isArray(legal) && legal.length) ? legal : [-2,-1,0,1,2];
+        for (const delta of deltas) moves.push({type:"kingFinal", cardId:id, delta});
       }
       return moves;
     }
@@ -2636,21 +2678,28 @@ function renderKingCards(cards, kw){
     STATE.pub.wonderMark[kw.builder] = wm;
   }
 
+  const legalSet = selectedId
+    ? new Set(legalWonderDeltas(STATE.pub.taken[kw.builder], selectedId, [0,1].map(p=>{ const wm = STATE.pub.wonderMark?.[p] || {}; return {cardId: wm.cardId || null, delta: Number(wm.delta)||0}; })))
+    : null;
+  const curIsLegal = !legalSet || legalSet.has(cur);
+
   btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
-  btnKingConfirm.disabled = (KING_SELECTED.size !== 1);
-  if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.disabled = false;
-  if (btnKingDeltaMinus) btnKingDeltaMinus.disabled = false;
-  if (btnKingDeltaBase) btnKingDeltaBase.disabled = false;
-  if (btnKingDeltaPlus) btnKingDeltaPlus.disabled = false;
-  if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.disabled = false;
+  btnKingConfirm.disabled = (KING_SELECTED.size !== 1) || !curIsLegal;
+  if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.disabled = !!legalSet && !legalSet.has(-2);
+  if (btnKingDeltaMinus) btnKingDeltaMinus.disabled = !!legalSet && !legalSet.has(-1);
+  if (btnKingDeltaBase) btnKingDeltaBase.disabled = !!legalSet && !legalSet.has(0);
+  if (btnKingDeltaPlus) btnKingDeltaPlus.disabled = !!legalSet && !legalSet.has(1);
+  if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.disabled = !!legalSet && !legalSet.has(2);
   if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.classList.toggle("primary", cur===-2);
   if (btnKingDeltaMinus) btnKingDeltaMinus.classList.toggle("primary", cur===-1);
   if (btnKingDeltaBase) btnKingDeltaBase.classList.toggle("primary", cur===0);
   if (btnKingDeltaPlus) btnKingDeltaPlus.classList.toggle("primary", cur===1);
   if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.classList.toggle("primary", cur===2);
-  if (elKingErr) elKingErr.textContent = (KING_SELECTED.size===1)
-    ? "Click the selected card to deselect, or press Confirm. Use -2 / -1 / 0 / +1 / +2 buttons below."
-    : "Select exactly 1 card, then choose -2 / -1 / 0 / +1 / +2 and Confirm.";
+  if (elKingErr) elKingErr.textContent = (KING_SELECTED.size!==1)
+    ? "Select exactly 1 card, then choose a legal modifier and Confirm."
+    : (!curIsLegal
+      ? "Current modifier is illegal for this card (range 1..10 and no suit duplicates). Choose another."
+      : "Click the selected card to deselect, or press Confirm.");
 }
 
 function logFinalize(res, beforeAge){
@@ -2697,6 +2746,11 @@ function setKingDelta(delta){
   const wm = STATE.pub.wonderMark[kw.builder];
   if (!wm) return;
   if (![-2,-1,0,1,2].includes(delta)) return;
+  const selectedId = [...KING_SELECTED][0] || wm.cardId || null;
+  if (selectedId){
+    const legal = legalWonderDeltas(STATE.pub.taken[kw.builder], selectedId, [0,1].map(p=>{ const wm = STATE.pub.wonderMark?.[p] || {}; return {cardId: wm.cardId || null, delta: Number(wm.delta)||0}; }));
+    if (!legal.includes(delta)) return;
+  }
   wm.delta = delta;
   syncKingOverlay();
 }
@@ -2782,8 +2836,8 @@ function computeFinalBreakdown(){
   const aAnc = allA.filter(c=>c.age==="ancient");
 
   // Ancient (scored on Ancient-only cards)
-  const ancHS = sumSuit(hAnc,"S", wonderMods);
-  const ancAS = sumSuit(aAnc,"S", wonderMods);
+  const ancHS = sumSuit(hAnc,"S", null);
+  const ancAS = sumSuit(aAnc,"S", null);
   const ancMilH = (ancHS>ancAS) ? 4 : 0;
   const ancMilA = (ancAS>ancHS) ? 4 : 0;
   const ancPen5H = hasAllFourOfValue(hAnc,5) ? -3 : 0;
@@ -2794,8 +2848,9 @@ function computeFinalBreakdown(){
   // Modern (scored on ALL collected cards, as per modernScoring())
   const modHS = sumSuit(allH,"S", wonderMods);
   const modAS = sumSuit(allA,"S", wonderMods);
-  const modMilH = (modHS>modAS) ? 8 : 0;
-  const modMilA = (modAS>modHS) ? 8 : 0;
+  const tieOwner = wonderTieOwner(allH, allA);
+  const modMilH = (modHS>modAS) ? 8 : ((modHS===modAS && tieOwner===0) ? 8 : 0);
+  const modMilA = (modAS>modHS) ? 8 : ((modAS===modHS && tieOwner===1) ? 8 : 0);
 
   const modFoodH = foodPoints(allH, wonderMods);
   const modFoodA = foodPoints(allA, wonderMods);
@@ -3134,7 +3189,12 @@ function renderHands(){
 
   elCompareBody.innerHTML = "";
 
-  const cult = cultureContestVP(h, a);
+  const wonderMods = [0,1].map(p=>{
+    const wm = pub.wonderMark?.[p] || {};
+    return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+  });
+
+  const cult = cultureContestVP(h, a, wonderMods);
   const hCultKeys = new Set();
   const aCultKeys = new Set();
   for (const g of (cult.bestGroup||[])){
@@ -3179,24 +3239,24 @@ function renderHands(){
     const markedCard = wm && wm.cardId ? cards.find(c=>c && c.id===wm.cardId) : null;
 
     if (suit === "S"){
-      const vals = suitValues(cards,"S");
-      const total = sumSuit(cards,"S");
+      const vals = suitValues(cards,"S", wonderMods);
+      const total = sumSuit(cards,"S", wonderMods);
       return { score: total, headline: String(total), chips: vals.map(valueLabel), markedCard };
     }
     if (suit === "C"){
-      const vals = suitValues(cards,"C");
-      const total = sumSuit(cards,"C");
+      const vals = suitValues(cards,"C", wonderMods);
+      const total = sumSuit(cards,"C", wonderMods);
       const vp = Math.floor(total/5);
       return { score: total, headline: `${total} (${vp} VP)`, chips: vals.map(valueLabel), markedCard };
     }
     if (suit === "H"){
-      const vals = suitValues(cards,"H");
+      const vals = suitValues(cards,"H", wonderMods);
       const keys = isHuman ? hTechKeys : aTechKeys;
       const tokens = runTokens(vals, 3, (keys && keys.size) ? keys : null);
       return { tokens, markedCard };
     }
 
-    const vals = suitValues(cards,"D");
+    const vals = suitValues(cards,"D", wonderMods);
     const vpKeys = isHuman ? hCultKeys : aCultKeys;
     const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
     return { tokens, markedCard };
