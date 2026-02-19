@@ -3621,11 +3621,11 @@ function render(){
 
       const big = document.createElement("div");
       big.className="big";
-      big.textContent = s.removed ? "" : (s.faceDown ? "" : cardLabel(s.card));
+      big.textContent = (s.removed && !isLastAiGhost) ? "" : (s.faceDown ? "" : cardLabel(s.card));
 
       const small = document.createElement("div");
       small.className="small";
-      small.textContent = s.removed ? "" : (s.faceDown ? "" : (s.card && s.card.kind==="king" ? "WOND" : (SUIT_ABBR[s.card.suit] || SUIT_NAME[s.card.suit] || "")));
+      small.textContent = (s.removed && !isLastAiGhost) ? "" : (s.faceDown ? "" : (s.card && s.card.kind==="king" ? "WOND" : (SUIT_ABBR[s.card.suit] || SUIT_NAME[s.card.suit] || "")));
 
       const cornerL = document.createElement("div");
       cornerL.className="cornerL";
