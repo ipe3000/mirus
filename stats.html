@@ -293,6 +293,10 @@
         wonder,
         calamities
       },
+      diamondsTiers: {
+        bestOwners: [...new Set((diamonds.bestGroup || []).map(x=>x.owner))],
+        secondOwners: [...new Set((diamonds.secondGroup || []).map(x=>x.owner))]
+      },
       heartsLength: {
         humanLongest: heartRuns.human.length ? Math.max(...heartRuns.human.map(r=>r.len)) : 0,
         aiLongest: heartRuns.ai.length ? Math.max(...heartRuns.ai.map(r=>r.len)) : 0,
@@ -305,6 +309,10 @@
   function simulateOne(startingPlayer, p0Level, p1Level, perf){
     const state = Core.Engine.newGame(startingPlayer);
     const events = {playerLeader:0, aiLeader:0, playerSwap:0, aiSwap:0, kingChoices:0};
+    const leaderTiming = [];
+    const ancientStarter = state.pub.currentPlayer;
+    let modernStarter = null;
+    let turnNo = 0;
 
     let guard = 0;
     while(!state.pub.ended && guard < 600){
@@ -324,18 +332,27 @@
       if (state.pub.ended) break;
 
       const p = state.pub.currentPlayer;
+      turnNo++;
+      const ageBeforeMove = state.pub.age;
       const level = p===0 ? p0Level : p1Level;
       const mv = chooseForPlayer(state, p, level, perf);
-      if (mv?.type === "leader") p===0 ? events.playerLeader++ : events.aiLeader++;
+      if (mv?.type === "leader"){
+        p===0 ? events.playerLeader++ : events.aiLeader++;
+        leaderTiming.push({player:p, turn:turnNo, age:ageBeforeMove});
+      }
       if (mv?.type === "modernSwap") p===0 ? events.playerSwap++ : events.aiSwap++;
       if (mv?.type === "kingFinal") events.kingChoices++;
       applyMove(state, p, mv);
+      if (modernStarter===null && ageBeforeMove === "ancient" && state.pub.age === "modern"){
+        modernStarter = state.pub.currentPlayer;
+      }
     }
 
     const final = state.pub.score;
     const breakdown = scoreWithWonderConfig(state, state.pub.wonderMark || null, null);
     const noWonderBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true});
     const categoryBreakdown = categoryVPBreakdown(state);
+    const noWonderCategoryBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true}).detail;
     const wonderImpact = {
       human: breakdown.human - noWonderBreakdown.human,
       ai: breakdown.ai - noWonderBreakdown.ai
@@ -365,6 +382,43 @@
       ai: aiWonderApplied ? (breakdown.ai - aiWonderCounterfactual.ai) : null
     };
 
+    const playerKings = state.pub.taken[0].filter(c=>c && c.kind === "king").length;
+    const aiKings = state.pub.taken[1].filter(c=>c && c.kind === "king").length;
+
+    const noWonderSuits = {
+      spades: {
+        human: noWonderCategoryBreakdown.anc.human + (noWonderCategoryBreakdown.mod.detail.hs > noWonderCategoryBreakdown.mod.detail.as ? 8 : 0),
+        ai: noWonderCategoryBreakdown.anc.ai + (noWonderCategoryBreakdown.mod.detail.as > noWonderCategoryBreakdown.mod.detail.hs ? 8 : 0)
+      },
+      diamonds: {
+        human: noWonderCategoryBreakdown.mod.detail.cult.h,
+        ai: noWonderCategoryBreakdown.mod.detail.cult.a
+      },
+      hearts: {
+        human: noWonderCategoryBreakdown.mod.detail.tech.h,
+        ai: noWonderCategoryBreakdown.mod.detail.tech.a
+      },
+      clubs: {
+        human: noWonderCategoryBreakdown.mod.detail.food.h,
+        ai: noWonderCategoryBreakdown.mod.detail.food.a
+      }
+    };
+
+    const wonderCategorySwing = {
+      human: {
+        spades: categoryBreakdown.suits.spades.human - noWonderSuits.spades.human,
+        diamonds: categoryBreakdown.suits.diamonds.human - noWonderSuits.diamonds.human,
+        hearts: categoryBreakdown.suits.hearts.human - noWonderSuits.hearts.human,
+        clubs: categoryBreakdown.suits.clubs.human - noWonderSuits.clubs.human
+      },
+      ai: {
+        spades: categoryBreakdown.suits.spades.ai - noWonderSuits.spades.ai,
+        diamonds: categoryBreakdown.suits.diamonds.ai - noWonderSuits.diamonds.ai,
+        hearts: categoryBreakdown.suits.hearts.ai - noWonderSuits.hearts.ai,
+        clubs: categoryBreakdown.suits.clubs.ai - noWonderSuits.clubs.ai
+      }
+    };
+
     return {
       player: final.human,
       ai: final.ai,
@@ -373,11 +427,16 @@
       margin: final.ai - final.human,
       winner: final.human === final.ai ? "draw" : (final.human > final.ai ? "player" : "ai"),
       events,
+      starters: {ancient: ancientStarter, modern: modernStarter},
+      leaderTiming,
+      kings: {human: playerKings, ai: aiKings},
       anc: breakdown.detail.anc,
       mod: breakdown.detail.mod,
       wonderImpact,
       wonderGainOnActivation,
+      wonderCategorySwing,
       suits: categoryBreakdown.suits,
+      diamondsTiers: categoryBreakdown.diamondsTiers,
       heartsLength: categoryBreakdown.heartsLength
     };
   }
@@ -442,6 +501,44 @@
     const wonderGainOnActivationA = avgDefined(out.map(x=>x.wonderGainOnActivation.ai));
     const wonderGainOnActivationHCnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.human)).length;
     const wonderGainOnActivationACnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.ai)).length;
+    const kingSplitCounts = out.reduce((acc, g)=>{
+      const maxK = Math.max(g.kings.human, g.kings.ai);
+      const minK = Math.min(g.kings.human, g.kings.ai);
+      const k = `${maxK}-${minK}`;
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    const wonderWinRatePlayer = pct(out.filter(x=>x.suits.wonder.human !== 0 && x.winner === "player").length, out.filter(x=>x.suits.wonder.human !== 0).length);
+    const wonderWinRateAI = pct(out.filter(x=>x.suits.wonder.ai !== 0 && x.winner === "ai").length, out.filter(x=>x.suits.wonder.ai !== 0).length);
+    const swingH = {
+      spades: avg(out.map(x=>x.wonderCategorySwing.human.spades)),
+      diamonds: avg(out.map(x=>x.wonderCategorySwing.human.diamonds)),
+      hearts: avg(out.map(x=>x.wonderCategorySwing.human.hearts)),
+      clubs: avg(out.map(x=>x.wonderCategorySwing.human.clubs))
+    };
+    const swingA = {
+      spades: avg(out.map(x=>x.wonderCategorySwing.ai.spades)),
+      diamonds: avg(out.map(x=>x.wonderCategorySwing.ai.diamonds)),
+      hearts: avg(out.map(x=>x.wonderCategorySwing.ai.hearts)),
+      clubs: avg(out.map(x=>x.wonderCategorySwing.ai.clubs))
+    };
+    const diamondTier = out.reduce((acc, g)=>{
+      const b = g.diamondsTiers.bestOwners;
+      const s = g.diamondsTiers.secondOwners;
+      if (b.length === 1 && s.length === 1 && b[0] === s[0]) acc.sweep++;
+      else acc.split++;
+      return acc;
+    }, {sweep:0, split:0});
+    const ancientStart = {
+      player: out.filter(x=>x.starters.ancient===0),
+      ai: out.filter(x=>x.starters.ancient===1)
+    };
+    const modernStart = {
+      player: out.filter(x=>x.starters.modern===0),
+      ai: out.filter(x=>x.starters.modern===1)
+    };
+    const leaderTimingsPlayer = out.flatMap(x=>x.leaderTiming.filter(t=>t.player===0));
+    const leaderTimingsAI = out.flatMap(x=>x.leaderTiming.filter(t=>t.player===1));
 
     els.kGames.textContent = String(out.length);
     els.kPlayerWin.textContent = pct(playerWins, out.length);
@@ -474,7 +571,20 @@
       ["♥ P95 lunghezza max (Player)", quantile(heartsLongestH, 0.95).toFixed(3)],
       ["♥ P95 lunghezza max (AI)", quantile(heartsLongestA, 0.95).toFixed(3)],
       ["♥ Numero sequenze medie (Player)", heartsRunsH.toFixed(3)],
-      ["♥ Numero sequenze medie (AI)", heartsRunsA.toFixed(3)]
+      ["♥ Numero sequenze medie (AI)", heartsRunsA.toFixed(3)],
+      ["Split Re 2-2", pct(kingSplitCounts["2-2"] || 0, out.length)],
+      ["Split Re 3-1", pct(kingSplitCounts["3-1"] || 0, out.length)],
+      ["Split Re 4-0", pct(kingSplitCounts["4-0"] || 0, out.length)],
+      ["♦ tier sweep", pct(diamondTier.sweep, out.length)],
+      ["♦ tier split", pct(diamondTier.split, out.length)],
+      ["Win% condizionato start Ancient: starter", pct(ancientStart.player.filter(x=>x.winner==="player").length + ancientStart.ai.filter(x=>x.winner==="ai").length, out.length)],
+      ["Win% condizionato start Modern: starter", pct(modernStart.player.filter(x=>x.winner==="player").length + modernStart.ai.filter(x=>x.winner==="ai").length, out.length)],
+      ["Leader timing medio Player (turno)", avg(leaderTimingsPlayer.map(x=>x.turn)).toFixed(2)],
+      ["Leader timing medio AI (turno)", avg(leaderTimingsAI.map(x=>x.turn)).toFixed(2)],
+      ["Leader uso in Ancient (Player)", pct(leaderTimingsPlayer.filter(x=>x.age==="ancient").length, leaderTimingsPlayer.length)],
+      ["Leader uso in Modern (Player)", pct(leaderTimingsPlayer.filter(x=>x.age==="modern").length, leaderTimingsPlayer.length)],
+      ["Leader uso in Ancient (AI)", pct(leaderTimingsAI.filter(x=>x.age==="ancient").length, leaderTimingsAI.length)],
+      ["Leader uso in Modern (AI)", pct(leaderTimingsAI.filter(x=>x.age==="modern").length, leaderTimingsAI.length)]
     ]);
 
     renderRows(els.vpTable, [
@@ -485,7 +595,12 @@
       ["Calamità 5 (malus medio)", avg(out.map(x=>x.suits.calamities.ancient5.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.ancient5.ai)).toFixed(2)],
       ["Calamità 10 (malus medio)", avg(out.map(x=>x.suits.calamities.modern10.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.modern10.ai)).toFixed(2)],
       ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
+      ["Meraviglia (win% con Meraviglia)", wonderWinRatePlayer, wonderWinRateAI],
       ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
+      ["Meraviglia swing medio Δ♠", swingH.spades.toFixed(2), swingA.spades.toFixed(2)],
+      ["Meraviglia swing medio Δ♦", swingH.diamonds.toFixed(2), swingA.diamonds.toFixed(2)],
+      ["Meraviglia swing medio Δ♥", swingH.hearts.toFixed(2), swingA.hearts.toFixed(2)],
+      ["Meraviglia swing medio Δ♣", swingH.clubs.toFixed(2), swingA.clubs.toFixed(2)],
       ["Meraviglia (gain medio quando attivata)", `${wonderGainOnActivationH.toFixed(2)} (${wonderGainOnActivationHCnt})`, `${wonderGainOnActivationA.toFixed(2)} (${wonderGainOnActivationACnt})`],
       ["Ancient VP medi", ancH.toFixed(2), ancA.toFixed(2)],
       ["Modern VP medi", modH.toFixed(2), modA.toFixed(2)],
