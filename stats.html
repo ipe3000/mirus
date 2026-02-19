@@ -235,7 +235,7 @@
     const aAnc = allA.filter(c=>c.age === "ancient");
     const wonderMods = wonderModsFromState(state);
 
-    const anc = fw.ancientScoring(hAnc, aAnc, wonderMods);
+    const anc = fw.ancientScoring(hAnc, aAnc);
     const mod = fw.modernScoring(allH, allA, wonderMods);
 
     const spades = {
@@ -323,9 +323,11 @@
       ? Core.totalScoring(state.pub.taken[0], state.pub.taken[1], aiOnlyOff)
       : noWonderBreakdown;
 
+    const playerWonderApplied = !!state.pub.wonderMark?.[0]?.cardId;
+    const aiWonderApplied = !!state.pub.wonderMark?.[1]?.cardId;
     const wonderGainOnActivation = {
-      human: events.playerWonder > 0 ? (breakdown.human - playerWonderCounterfactual.human) : null,
-      ai: events.aiWonder > 0 ? (breakdown.ai - aiWonderCounterfactual.ai) : null
+      human: playerWonderApplied ? (breakdown.human - playerWonderCounterfactual.human) : null,
+      ai: aiWonderApplied ? (breakdown.ai - aiWonderCounterfactual.ai) : null
     };
 
     return {
