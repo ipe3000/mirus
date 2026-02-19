@@ -258,15 +258,23 @@
 
     const final = state.pub.score;
     const breakdown = Core.totalScoring(state.pub.taken[0], state.pub.taken[1], state.pub.wonderMark || null);
+    const noWonderBreakdown = Core.totalScoring(state.pub.taken[0], state.pub.taken[1], null);
     const categoryBreakdown = categoryVPBreakdown(state);
+    const wonderImpact = {
+      human: breakdown.human - noWonderBreakdown.human,
+      ai: breakdown.ai - noWonderBreakdown.ai
+    };
     return {
       player: final.human,
       ai: final.ai,
+      playerBaseNoWonder: noWonderBreakdown.human,
+      aiBaseNoWonder: noWonderBreakdown.ai,
       margin: final.ai - final.human,
       winner: final.human === final.ai ? "draw" : (final.human > final.ai ? "player" : "ai"),
       events,
       anc: breakdown.detail.anc,
       mod: breakdown.detail.mod,
+      wonderImpact,
       suits: categoryBreakdown.suits,
       heartsLength: categoryBreakdown.heartsLength
     };
@@ -327,6 +335,8 @@
     const pScores = out.map(x=>x.player).sort((a,b)=>a-b);
     const aScores = out.map(x=>x.ai).sort((a,b)=>a-b);
     const margins = out.map(x=>x.margin).sort((a,b)=>a-b);
+    const pBaseScores = out.map(x=>x.playerBaseNoWonder).sort((a,b)=>a-b);
+    const aBaseScores = out.map(x=>x.aiBaseNoWonder).sort((a,b)=>a-b);
 
     const eventTotals = out.reduce((acc,g)=>{
       for (const k of Object.keys(g.events)) acc[k] = (acc[k] || 0) + g.events[k];
@@ -341,6 +351,8 @@
     const heartsLongestA = out.map(x=>x.heartsLength.aiLongest).sort((a,b)=>a-b);
     const heartsRunsH = avg(out.map(x=>x.heartsLength.humanRuns));
     const heartsRunsA = avg(out.map(x=>x.heartsLength.aiRuns));
+    const wonderImpactH = avg(out.map(x=>x.wonderImpact.human));
+    const wonderImpactA = avg(out.map(x=>x.wonderImpact.ai));
 
     els.kGames.textContent = String(out.length);
     els.kPlayerWin.textContent = pct(playerWins, out.length);
@@ -349,6 +361,8 @@
 
     renderRows(els.scoreTable, [
       ["Media", avg(pScores).toFixed(2), avg(aScores).toFixed(2)],
+      ["Media senza potere Meraviglia", avg(pBaseScores).toFixed(2), avg(aBaseScores).toFixed(2)],
+      ["Impatto medio Meraviglia", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
       ["Mediana", quantile(pScores, 0.5).toFixed(2), quantile(aScores, 0.5).toFixed(2)],
       ["P5", quantile(pScores, 0.05).toFixed(2), quantile(aScores, 0.05).toFixed(2)],
       ["P95", quantile(pScores, 0.95).toFixed(2), quantile(aScores, 0.95).toFixed(2)],
@@ -374,7 +388,8 @@
       ["♣ VP medi", avg(out.map(x=>x.suits.clubs.human)).toFixed(2), avg(out.map(x=>x.suits.clubs.ai)).toFixed(2)],
       ["♦ VP medi", avg(out.map(x=>x.suits.diamonds.human)).toFixed(2), avg(out.map(x=>x.suits.diamonds.ai)).toFixed(2)],
       ["♥ VP medi", avg(out.map(x=>x.suits.hearts.human)).toFixed(2), avg(out.map(x=>x.suits.hearts.ai)).toFixed(2)],
-      ["Meraviglia VP medi", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
+      ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
+      ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
       ["Ancient VP medi", ancH.toFixed(2), ancA.toFixed(2)],
       ["Modern VP medi", modH.toFixed(2), modA.toFixed(2)],
       ["Totale medio", (ancH+modH).toFixed(2), (ancA+modA).toFixed(2)]
