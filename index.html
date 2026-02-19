@@ -802,48 +802,75 @@ body.playing #leaderBtnSide{ display:inline-flex; }
 
 
 
-/* === Layout update: stack playfield and taken-cards panels vertically === */
+/* === Final responsive layout contract (desktop + mobile) === */
 .grid{
-  display:flex !important;
-  flex-direction:column;
-  gap:12px;
+  display:grid !important;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap:10px;
   height:100%;
   min-height:0;
+  align-items:stretch;
 }
-.grid > .tableauPanel{
-  min-height:0;
-  max-height:40vh;
-  width:90vw;
-}
+
+.grid > .tableauPanel,
 .grid > aside.panel{
-  flex:0 0 auto;
-  max-height:65vh;
-  min-height:260px;
-  width:90vw;	
+  min-width:0;
+  min-height:0;
+  width:100%;
 }
+
+.grid > .tableauPanel .bd,
 .grid > aside.panel .bd{
-  overflow:auto;
+  overflow:hidden;
 }
+
+/* Keep the taken-cards area compact so all suit rows remain visible without scroll */
+.compareWrap{ padding:6px; }
+.compareTable{ border-spacing:0 4px; }
+.compareTable th{ font-size:11px; padding:0 6px 2px; }
+.compareTable th:first-child{ width:94px; }
+.compareTable td{ padding:0 6px; }
+.catCell{ font-size:10px; padding:5px 6px; border-left-width:3px; }
+.battleCell{ min-height:38px; padding:5px 6px; }
+.battleHead{ margin-bottom:3px; }
+.battleValue{ font-size:13px; }
+.suitMeta{ font-size:10px; }
+.suitValues{ gap:3px; }
+.chip{ font-size:10px; line-height:15px; padding:0 3px; }
+
+/* Log is secondary to gameplay and taken-cards visibility */
+#logBox{ display:none; }
+.logInline{ display:none; }
 
 @media (max-width: 980px){
-  main{ padding:8px; }
-  .grid{ gap:8px; }
-  .grid > .tableauPanel{ flex:1 1 auto; }
-  .grid > aside.panel{
-    min-height:220px;
-    max-height:50dvh;
+  .grid{
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, .72fr);
+    gap:8px;
   }
-  .compareTable th:first-child{ width:96px; }
-  .battleCell{ min-height:42px; }
+
+  .grid > .tableauPanel{ order:1; }
+  .grid > aside.panel{ order:2; }
+
+  .panel .hd{ padding:8px 10px; }
+  .panel .bd{ padding:6px; }
+
+  .compareTable th:first-child{ width:82px; }
+  .catCell{ font-size:9px; padding:4px 5px; }
+  .battleCell{ min-height:34px; padding:4px 5px; }
+  .battleValue{ font-size:12px; }
+  .suitMeta, .suitLabel, .suitSep{ font-size:9px; }
+  .chip{ font-size:9px; line-height:14px; padding:0 2px; }
 }
 
-@media (max-width: 640px){
-  .panel .hd{ padding:8px 10px; }
-  .panel .bd{ padding:8px; }
-  .grid > aside.panel{
-    min-height:200px;
-    max-height:46dvh;
-  }
+@media (max-width: 420px), (max-height: 760px){
+  .grid{ grid-template-rows: minmax(0, 1fr) minmax(0, .78fr); }
+  .panel .hd{ padding:7px 9px; }
+  .panel .bd{ padding:5px; }
+  .compareTable th{ font-size:10px; }
+  .battleValue{ font-size:11px; }
+  .chip{ font-size:8.5px; line-height:13px; }
 }
 
 </style>
