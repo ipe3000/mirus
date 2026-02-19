@@ -236,20 +236,21 @@
     );
   }
 
-  function categoryVPBreakdown(state){
+  function categoryVPBreakdown(state, opts={}){
+    const {wonderModsOverride, scoringOpts=null} = opts;
     const fw = frame.contentWindow;
     const allH = state.pub.taken[0].slice();
     const allA = state.pub.taken[1].slice();
     const hAnc = allH.filter(c=>c.age === "ancient");
     const aAnc = allA.filter(c=>c.age === "ancient");
-    const wonderMods = wonderModsFromState(state);
+    const wonderMods = wonderModsOverride === undefined ? wonderModsFromState(state) : wonderModsOverride;
 
     const anc = fw.ancientScoring(hAnc, aAnc);
-    const mod = fw.modernScoring(allH, allA, wonderMods);
+    const mod = fw.modernScoring(allH, allA, wonderMods, scoringOpts);
 
     const spades = {
-      human: anc.human + (mod.detail.hs > mod.detail.as ? 8 : (mod.detail.as > mod.detail.hs ? 0 : fw.wonderTieOwner(allH, allA) === 0 ? 8 : 0)),
-      ai: anc.ai + (mod.detail.as > mod.detail.hs ? 8 : (mod.detail.hs > mod.detail.as ? 0 : fw.wonderTieOwner(allH, allA) === 1 ? 8 : 0))
+      human: anc.human + (mod.detail.hs > mod.detail.as ? 8 : (mod.detail.as > mod.detail.hs ? 0 : fw.wonderTieOwner(allH, allA, scoringOpts) === 0 ? 8 : 0)),
+      ai: anc.ai + (mod.detail.as > mod.detail.hs ? 8 : (mod.detail.hs > mod.detail.as ? 0 : fw.wonderTieOwner(allH, allA, scoringOpts) === 1 ? 8 : 0))
     };
 
     const clubs = {
@@ -257,7 +258,7 @@
       ai: fw.foodPoints(allA, wonderMods)
     };
 
-    const diamonds = fw.cultureContestVP(allH, allA, wonderMods);
+    const diamonds = fw.cultureContestVP(allH, allA, wonderMods, scoringOpts);
     const hearts = {
       human: fw.techPoints(allH, wonderMods),
       ai: fw.techPoints(allA, wonderMods)
@@ -352,7 +353,10 @@
     const breakdown = scoreWithWonderConfig(state, state.pub.wonderMark || null, null);
     const noWonderBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true});
     const categoryBreakdown = categoryVPBreakdown(state);
-    const noWonderCategoryBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true}).detail;
+    const noWonderCategoryBreakdown = categoryVPBreakdown(state, {
+      wonderModsOverride: null,
+      scoringOpts: {disableAllWonderTieBreaks:true}
+    });
     const wonderImpact = {
       human: breakdown.human - noWonderBreakdown.human,
       ai: breakdown.ai - noWonderBreakdown.ai
@@ -387,20 +391,20 @@
 
     const noWonderSuits = {
       spades: {
-        human: noWonderCategoryBreakdown.anc.human + (noWonderCategoryBreakdown.mod.detail.hs > noWonderCategoryBreakdown.mod.detail.as ? 8 : 0),
-        ai: noWonderCategoryBreakdown.anc.ai + (noWonderCategoryBreakdown.mod.detail.as > noWonderCategoryBreakdown.mod.detail.hs ? 8 : 0)
+        human: noWonderCategoryBreakdown.suits.spades.human,
+        ai: noWonderCategoryBreakdown.suits.spades.ai
       },
       diamonds: {
-        human: noWonderCategoryBreakdown.mod.detail.cult.h,
-        ai: noWonderCategoryBreakdown.mod.detail.cult.a
+        human: noWonderCategoryBreakdown.suits.diamonds.human,
+        ai: noWonderCategoryBreakdown.suits.diamonds.ai
       },
       hearts: {
-        human: noWonderCategoryBreakdown.mod.detail.tech.h,
-        ai: noWonderCategoryBreakdown.mod.detail.tech.a
+        human: noWonderCategoryBreakdown.suits.hearts.human,
+        ai: noWonderCategoryBreakdown.suits.hearts.ai
       },
       clubs: {
-        human: noWonderCategoryBreakdown.mod.detail.food.h,
-        ai: noWonderCategoryBreakdown.mod.detail.food.a
+        human: noWonderCategoryBreakdown.suits.clubs.human,
+        ai: noWonderCategoryBreakdown.suits.clubs.ai
       }
     };
 
