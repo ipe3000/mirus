@@ -227,6 +227,15 @@
     });
   }
 
+  function scoreWithWonderConfig(state, wonderMods, wonderCfg){
+    return Core.totalScoring(
+      state.pub.taken[0],
+      state.pub.taken[1],
+      wonderMods,
+      wonderCfg
+    );
+  }
+
   function categoryVPBreakdown(state){
     const fw = frame.contentWindow;
     const allH = state.pub.taken[0].slice();
@@ -300,6 +309,20 @@
     let guard = 0;
     while(!state.pub.ended && guard < 600){
       guard++;
+
+      // Modern swap is an out-of-turn choice for the player who would act second.
+      // Simulate it before the current player's normal move.
+      for (const candidate of [0,1]){
+        if (!Core.Engine.canUseModernSwap(state.pub, candidate)) continue;
+        const level = candidate===0 ? p0Level : p1Level;
+        const mv = chooseForPlayer(state, candidate, level, perf);
+        if (mv?.type === "modernSwap"){
+          candidate===0 ? events.playerSwap++ : events.aiSwap++;
+          applyMove(state, candidate, mv);
+        }
+      }
+      if (state.pub.ended) break;
+
       const p = state.pub.currentPlayer;
       const level = p===0 ? p0Level : p1Level;
       const mv = chooseForPlayer(state, p, level, perf);
@@ -310,8 +333,8 @@
     }
 
     const final = state.pub.score;
-    const breakdown = Core.totalScoring(state.pub.taken[0], state.pub.taken[1], state.pub.wonderMark || null);
-    const noWonderBreakdown = Core.totalScoring(state.pub.taken[0], state.pub.taken[1], null);
+    const breakdown = scoreWithWonderConfig(state, state.pub.wonderMark || null, null);
+    const noWonderBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true});
     const categoryBreakdown = categoryVPBreakdown(state);
     const wonderImpact = {
       human: breakdown.human - noWonderBreakdown.human,
@@ -329,10 +352,10 @@
     if (aiOnlyOff?.[1]){ aiOnlyOff[1].cardId = null; aiOnlyOff[1].delta = 0; }
 
     const playerWonderCounterfactual = playerOnlyOff
-      ? Core.totalScoring(state.pub.taken[0], state.pub.taken[1], playerOnlyOff)
+      ? scoreWithWonderConfig(state, playerOnlyOff, {disableWonderForPlayer:[true,false]})
       : noWonderBreakdown;
     const aiWonderCounterfactual = aiOnlyOff
-      ? Core.totalScoring(state.pub.taken[0], state.pub.taken[1], aiOnlyOff)
+      ? scoreWithWonderConfig(state, aiOnlyOff, {disableWonderForPlayer:[false,true]})
       : noWonderBreakdown;
 
     const playerWonderApplied = !!state.pub.wonderMark?.[0]?.cardId;
