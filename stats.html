@@ -175,6 +175,10 @@
   }
 
   function avg(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+  function avgDefined(arr){
+    const vals = arr.filter(v=>Number.isFinite(v));
+    return vals.length ? avg(vals) : 0;
+  }
   function pct(x, n){ return n ? (100*x/n).toFixed(1) + "%" : "0.0%"; }
 
   function quantile(sorted, q){
@@ -301,6 +305,29 @@
       human: breakdown.human - noWonderBreakdown.human,
       ai: breakdown.ai - noWonderBreakdown.ai
     };
+
+    const cloneMarks = (marks)=>{
+      if (!marks) return null;
+      if (typeof structuredClone === "function") return structuredClone(marks);
+      return JSON.parse(JSON.stringify(marks));
+    };
+    const playerOnlyOff = cloneMarks(state.pub.wonderMark);
+    const aiOnlyOff = cloneMarks(state.pub.wonderMark);
+    if (playerOnlyOff?.[0]){ playerOnlyOff[0].cardId = null; playerOnlyOff[0].delta = 0; }
+    if (aiOnlyOff?.[1]){ aiOnlyOff[1].cardId = null; aiOnlyOff[1].delta = 0; }
+
+    const playerWonderCounterfactual = playerOnlyOff
+      ? Core.totalScoring(state.pub.taken[0], state.pub.taken[1], playerOnlyOff)
+      : noWonderBreakdown;
+    const aiWonderCounterfactual = aiOnlyOff
+      ? Core.totalScoring(state.pub.taken[0], state.pub.taken[1], aiOnlyOff)
+      : noWonderBreakdown;
+
+    const wonderGainOnActivation = {
+      human: events.playerWonder > 0 ? (breakdown.human - playerWonderCounterfactual.human) : null,
+      ai: events.aiWonder > 0 ? (breakdown.ai - aiWonderCounterfactual.ai) : null
+    };
+
     return {
       player: final.human,
       ai: final.ai,
@@ -312,6 +339,7 @@
       anc: breakdown.detail.anc,
       mod: breakdown.detail.mod,
       wonderImpact,
+      wonderGainOnActivation,
       suits: categoryBreakdown.suits,
       heartsLength: categoryBreakdown.heartsLength
     };
@@ -373,6 +401,10 @@
     const heartsRunsA = avg(out.map(x=>x.heartsLength.aiRuns));
     const wonderImpactH = avg(out.map(x=>x.wonderImpact.human));
     const wonderImpactA = avg(out.map(x=>x.wonderImpact.ai));
+    const wonderGainOnActivationH = avgDefined(out.map(x=>x.wonderGainOnActivation.human));
+    const wonderGainOnActivationA = avgDefined(out.map(x=>x.wonderGainOnActivation.ai));
+    const wonderGainOnActivationHCnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.human)).length;
+    const wonderGainOnActivationACnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.ai)).length;
 
     els.kGames.textContent = String(out.length);
     els.kPlayerWin.textContent = pct(playerWins, out.length);
@@ -383,6 +415,7 @@
       ["Media", avg(pScores).toFixed(2), avg(aScores).toFixed(2)],
       ["Media senza potere Meraviglia", avg(pBaseScores).toFixed(2), avg(aBaseScores).toFixed(2)],
       ["Impatto medio Meraviglia", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
+      ["Gain medio Wonder quando attivata", wonderGainOnActivationH.toFixed(2), wonderGainOnActivationA.toFixed(2)],
       ["Mediana", quantile(pScores, 0.5).toFixed(2), quantile(aScores, 0.5).toFixed(2)],
       ["P5", quantile(pScores, 0.05).toFixed(2), quantile(aScores, 0.05).toFixed(2)],
       ["P95", quantile(pScores, 0.95).toFixed(2), quantile(aScores, 0.95).toFixed(2)],
@@ -410,6 +443,7 @@
       ["♥ VP medi", avg(out.map(x=>x.suits.hearts.human)).toFixed(2), avg(out.map(x=>x.suits.hearts.ai)).toFixed(2)],
       ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
       ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
+      ["Meraviglia (gain medio quando attivata)", `${wonderGainOnActivationH.toFixed(2)} (${wonderGainOnActivationHCnt})`, `${wonderGainOnActivationA.toFixed(2)} (${wonderGainOnActivationACnt})`],
       ["Ancient VP medi", ancH.toFixed(2), ancA.toFixed(2)],
       ["Modern VP medi", modH.toFixed(2), modA.toFixed(2)],
       ["Totale medio", (ancH+modH).toFixed(2), (ancA+modA).toFixed(2)]
