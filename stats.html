@@ -259,6 +259,17 @@
       ai: Number(state.pub.wonderMark?.[1]?.delta) || 0
     };
 
+    const calamities = {
+      ancient5: {
+        human: fw.hasAllFourOfValue(hAnc, 5) ? -3 : 0,
+        ai: fw.hasAllFourOfValue(aAnc, 5) ? -3 : 0
+      },
+      modern10: {
+        human: fw.hasAllFourOfValue(allH, 10) ? -6 : 0,
+        ai: fw.hasAllFourOfValue(allA, 10) ? -6 : 0
+      }
+    };
+
     const heartRuns = {
       human: fw.circularRuns(fw.valuesSet(allH, "H", wonderMods)).filter(r=>r.len>=3),
       ai: fw.circularRuns(fw.valuesSet(allA, "H", wonderMods)).filter(r=>r.len>=3)
@@ -270,7 +281,8 @@
         diamonds: {human: diamonds.h, ai: diamonds.a},
         clubs,
         spades,
-        wonder
+        wonder,
+        calamities
       },
       heartsLength: {
         humanLongest: heartRuns.human.length ? Math.max(...heartRuns.human.map(r=>r.len)) : 0,
@@ -430,6 +442,10 @@
       ["Swap Modern Player", (eventTotals.playerSwap / out.length).toFixed(3)],
       ["Swap Modern AI", (eventTotals.aiSwap / out.length).toFixed(3)],
       ["King final choice", (eventTotals.kingChoices / out.length).toFixed(3)],
+      ["Calamità 5 Player (freq)", (out.filter(x=>x.suits.calamities.ancient5.human < 0).length / out.length).toFixed(3)],
+      ["Calamità 5 AI (freq)", (out.filter(x=>x.suits.calamities.ancient5.ai < 0).length / out.length).toFixed(3)],
+      ["Calamità 10 Player (freq)", (out.filter(x=>x.suits.calamities.modern10.human < 0).length / out.length).toFixed(3)],
+      ["Calamità 10 AI (freq)", (out.filter(x=>x.suits.calamities.modern10.ai < 0).length / out.length).toFixed(3)],
       ["♥ Lunghezza max media (Player)", avg(heartsLongestH).toFixed(3)],
       ["♥ Lunghezza max media (AI)", avg(heartsLongestA).toFixed(3)],
       ["♥ P95 lunghezza max (Player)", quantile(heartsLongestH, 0.95).toFixed(3)],
@@ -443,6 +459,8 @@
       ["♣ VP medi", avg(out.map(x=>x.suits.clubs.human)).toFixed(2), avg(out.map(x=>x.suits.clubs.ai)).toFixed(2)],
       ["♦ VP medi", avg(out.map(x=>x.suits.diamonds.human)).toFixed(2), avg(out.map(x=>x.suits.diamonds.ai)).toFixed(2)],
       ["♥ VP medi", avg(out.map(x=>x.suits.hearts.human)).toFixed(2), avg(out.map(x=>x.suits.hearts.ai)).toFixed(2)],
+      ["Calamità 5 (malus medio)", avg(out.map(x=>x.suits.calamities.ancient5.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.ancient5.ai)).toFixed(2)],
+      ["Calamità 10 (malus medio)", avg(out.map(x=>x.suits.calamities.modern10.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.modern10.ai)).toFixed(2)],
       ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
       ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
       ["Meraviglia (gain medio quando attivata)", `${wonderGainOnActivationH.toFixed(2)} (${wonderGainOnActivationHCnt})`, `${wonderGainOnActivationA.toFixed(2)} (${wonderGainOnActivationACnt})`],
