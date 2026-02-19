@@ -1390,8 +1390,8 @@ function cultureVP(cards){
 
 function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
   // Global, contested Culture (Mirus 2.0): award tiers are assigned across BOTH players' ♦ sequences.
-  // Tier 1: +10 to the best sequence (len ≥ 2)
-  // Tier 2: +5 to the second-best sequence (len ≥ 2)
+  // Tier 1: +8 to the best sequence (len ≥ 2)
+  // Tier 2: +4 to the second-best sequence (len ≥ 2)
   // Tie-breaks: longer length wins; if tie, higher card wins.
   // If both length and high card tie, the tier is shared.
   const hRuns = diamondStraights(hCards, wonderMods);
@@ -1416,7 +1416,7 @@ function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
       bestGroup = bestGroup.filter(c=>c.owner===tieOwner);
     }
     for (const c of bestGroup){
-        if (c.owner===0) h += 10; else a += 10;
+        if (c.owner===0) h += 8; else a += 8;
     }
 
     const rest = cand.filter(c=>c.key!==bestKey);
@@ -1427,7 +1427,7 @@ function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
         secondGroup = secondGroup.filter(c=>c.owner===tieOwner);
       }
       for (const c of secondGroup){
-          if (c.owner===0) h += 5; else a += 5;
+          if (c.owner===0) h += 4; else a += 4;
       }
     }
   }
@@ -2841,8 +2841,8 @@ btnEndNew.addEventListener("click", ()=>{
 /* Build a readable score breakdown without touching the engine rules */
 function culturePointsDetail(hCards, aCards, wonderMods=null){
   // Culture is CONTESTED: across both players there are only two award tiers:
-  // - +10 to the best straight (len ≥ 2)
-  // - +5 to the second-best straight (next distinct tier, len ≥ 2)
+  // - +8 to the best straight (len ≥ 2)
+  // - +4 to the second-best straight (next distinct tier, len ≥ 2)
   // In case of a tie on (len, high card), the tier is shared.
   const res = cultureContestVP(hCards, aCards, wonderMods);
 
@@ -2860,7 +2860,7 @@ function culturePointsDetail(hCards, aCards, wonderMods=null){
     return `+${pts}: ${ownersLabel(group)} (${runText(group[0].run)})`;
   }
 
-  const reason = `♦ Culture VP (contested): ${awardText(res.bestGroup,10)}; ${awardText(res.secondGroup,5)}.`;
+  const reason = `♦ Culture VP (contested): ${awardText(res.bestGroup,8)}; ${awardText(res.secondGroup,4)}.`;
 
   return {
     h: res.h,
