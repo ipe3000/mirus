@@ -179,6 +179,67 @@
     if (mv.type === "pass") { state.pub.picksLeftThisTurn = 1; state.pub.currentPlayer = 1 - state.pub.currentPlayer; }
   }
 
+  function wonderModsFromState(state){
+    return [0,1].map(p=>{
+      const wm = state.pub.wonderMark?.[p] || {};
+      return {cardId: wm.cardId || null, delta: Number(wm.delta) || 0};
+    });
+  }
+
+  function categoryVPBreakdown(state){
+    const fw = frame.contentWindow;
+    const allH = state.pub.taken[0].slice();
+    const allA = state.pub.taken[1].slice();
+    const hAnc = allH.filter(c=>c.age === "ancient");
+    const aAnc = allA.filter(c=>c.age === "ancient");
+    const wonderMods = wonderModsFromState(state);
+
+    const anc = fw.ancientScoring(hAnc, aAnc, wonderMods);
+    const mod = fw.modernScoring(allH, allA, wonderMods);
+
+    const spades = {
+      human: anc.human + (mod.detail.hs > mod.detail.as ? 8 : (mod.detail.as > mod.detail.hs ? 0 : fw.wonderTieOwner(allH, allA) === 0 ? 8 : 0)),
+      ai: anc.ai + (mod.detail.as > mod.detail.hs ? 8 : (mod.detail.hs > mod.detail.as ? 0 : fw.wonderTieOwner(allH, allA) === 1 ? 8 : 0))
+    };
+
+    const clubs = {
+      human: fw.foodPoints(allH, wonderMods),
+      ai: fw.foodPoints(allA, wonderMods)
+    };
+
+    const diamonds = fw.cultureContestVP(allH, allA, wonderMods);
+    const hearts = {
+      human: fw.techPoints(allH, wonderMods),
+      ai: fw.techPoints(allA, wonderMods)
+    };
+
+    const wonder = {
+      human: Number(state.pub.wonderMark?.[0]?.delta) || 0,
+      ai: Number(state.pub.wonderMark?.[1]?.delta) || 0
+    };
+
+    const heartRuns = {
+      human: fw.circularRuns(fw.valuesSet(allH, "H", wonderMods)).filter(r=>r.len>=3),
+      ai: fw.circularRuns(fw.valuesSet(allA, "H", wonderMods)).filter(r=>r.len>=3)
+    };
+
+    return {
+      suits: {
+        hearts,
+        diamonds: {human: diamonds.h, ai: diamonds.a},
+        clubs,
+        spades,
+        wonder
+      },
+      heartsLength: {
+        humanLongest: heartRuns.human.length ? Math.max(...heartRuns.human.map(r=>r.len)) : 0,
+        aiLongest: heartRuns.ai.length ? Math.max(...heartRuns.ai.map(r=>r.len)) : 0,
+        humanRuns: heartRuns.human.length,
+        aiRuns: heartRuns.ai.length
+      }
+    };
+  }
+
   function simulateOne(startingPlayer, p0Level, p1Level, perf){
     const state = Core.Engine.newGame(startingPlayer);
     const events = {playerWonder:0, aiWonder:0, playerSwap:0, aiSwap:0, kingChoices:0};
@@ -197,6 +258,7 @@
 
     const final = state.pub.score;
     const breakdown = Core.totalScoring(state.pub.taken[0], state.pub.taken[1], state.pub.wonderMark || null);
+    const categoryBreakdown = categoryVPBreakdown(state);
     return {
       player: final.human,
       ai: final.ai,
@@ -204,7 +266,9 @@
       winner: final.human === final.ai ? "draw" : (final.human > final.ai ? "player" : "ai"),
       events,
       anc: breakdown.detail.anc,
-      mod: breakdown.detail.mod
+      mod: breakdown.detail.mod,
+      suits: categoryBreakdown.suits,
+      heartsLength: categoryBreakdown.heartsLength
     };
   }
 
@@ -273,6 +337,10 @@
     const ancA = avg(out.map(x=>x.anc.ai));
     const modH = avg(out.map(x=>x.mod.human));
     const modA = avg(out.map(x=>x.mod.ai));
+    const heartsLongestH = out.map(x=>x.heartsLength.humanLongest).sort((a,b)=>a-b);
+    const heartsLongestA = out.map(x=>x.heartsLength.aiLongest).sort((a,b)=>a-b);
+    const heartsRunsH = avg(out.map(x=>x.heartsLength.humanRuns));
+    const heartsRunsA = avg(out.map(x=>x.heartsLength.aiRuns));
 
     els.kGames.textContent = String(out.length);
     els.kPlayerWin.textContent = pct(playerWins, out.length);
@@ -292,10 +360,21 @@
       ["Leader AI", (eventTotals.aiWonder / out.length).toFixed(3)],
       ["Swap Modern Player", (eventTotals.playerSwap / out.length).toFixed(3)],
       ["Swap Modern AI", (eventTotals.aiSwap / out.length).toFixed(3)],
-      ["King final choice", (eventTotals.kingChoices / out.length).toFixed(3)]
+      ["King final choice", (eventTotals.kingChoices / out.length).toFixed(3)],
+      ["♥ Lunghezza max media (Player)", avg(heartsLongestH).toFixed(3)],
+      ["♥ Lunghezza max media (AI)", avg(heartsLongestA).toFixed(3)],
+      ["♥ P95 lunghezza max (Player)", quantile(heartsLongestH, 0.95).toFixed(3)],
+      ["♥ P95 lunghezza max (AI)", quantile(heartsLongestA, 0.95).toFixed(3)],
+      ["♥ Numero sequenze medie (Player)", heartsRunsH.toFixed(3)],
+      ["♥ Numero sequenze medie (AI)", heartsRunsA.toFixed(3)]
     ]);
 
     renderRows(els.vpTable, [
+      ["♠ VP medi", avg(out.map(x=>x.suits.spades.human)).toFixed(2), avg(out.map(x=>x.suits.spades.ai)).toFixed(2)],
+      ["♣ VP medi", avg(out.map(x=>x.suits.clubs.human)).toFixed(2), avg(out.map(x=>x.suits.clubs.ai)).toFixed(2)],
+      ["♦ VP medi", avg(out.map(x=>x.suits.diamonds.human)).toFixed(2), avg(out.map(x=>x.suits.diamonds.ai)).toFixed(2)],
+      ["♥ VP medi", avg(out.map(x=>x.suits.hearts.human)).toFixed(2), avg(out.map(x=>x.suits.hearts.ai)).toFixed(2)],
+      ["Meraviglia VP medi", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
       ["Ancient VP medi", ancH.toFixed(2), ancA.toFixed(2)],
       ["Modern VP medi", modH.toFixed(2), modA.toFixed(2)],
       ["Totale medio", (ancH+modH).toFixed(2), (ancA+modA).toFixed(2)]
