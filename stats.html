@@ -288,6 +288,22 @@
     };
 
     const diamonds = fw.cultureContestVP(allH, allA, wonderMods, scoringOpts);
+    const spadesSum = {human: mod.detail.hs, ai: mod.detail.as};
+    const clubsSum = {
+      human: fw.sumSuit(allH, "C", wonderMods),
+      ai: fw.sumSuit(allA, "C", wonderMods)
+    };
+    const tieOwner = fw.wonderTieOwner(allH, allA, scoringOpts);
+    const spadesFirstOwners =
+      spadesSum.human > spadesSum.ai ? [0]
+      : spadesSum.ai > spadesSum.human ? [1]
+      : tieOwner === 0 ? [0]
+      : tieOwner === 1 ? [1]
+      : [];
+    const clubsFirstOwners =
+      clubsSum.human > clubsSum.ai ? [0]
+      : clubsSum.ai > clubsSum.human ? [1]
+      : [];
     const hearts = {
       human: fw.techPoints(allH, wonderMods),
       ai: fw.techPoints(allA, wonderMods)
@@ -326,6 +342,10 @@
       diamondsTiers: {
         bestOwners: [...new Set((diamonds.bestGroup || []).map(x=>x.owner))],
         secondOwners: [...new Set((diamonds.secondGroup || []).map(x=>x.owner))]
+      },
+      firstPrizeOwners: {
+        spades: spadesFirstOwners,
+        clubs: clubsFirstOwners
       },
       heartsLength: {
         humanLongest: heartRuns.human.length ? Math.max(...heartRuns.human.map(r=>r.len)) : 0,
@@ -472,6 +492,7 @@
       wonderCategorySwing,
       suits: categoryBreakdown.suits,
       diamondsTiers: categoryBreakdown.diamondsTiers,
+      firstPrizeOwners: categoryBreakdown.firstPrizeOwners,
       heartsLength: categoryBreakdown.heartsLength
     };
   }
@@ -549,13 +570,30 @@
     const wonderBuiltByAI = out.filter(x=>x.kings.ai >= 3);
     const wonderWinRatePlayer = pct(wonderBuiltByPlayer.filter(x=>x.winner === "player").length, wonderBuiltByPlayer.length);
     const wonderWinRateAI = pct(wonderBuiltByAI.filter(x=>x.winner === "ai").length, wonderBuiltByAI.length);
-    // Per evitare ambiguità: se entrambi costruiscono la Meraviglia nella stessa partita,
-    // uno dei due perderà comunque. Questo indicatore misura il vantaggio quando
-    // solo un lato riesce ad attivarla.
-    const wonderBuiltOnlyPlayer = out.filter(x=>x.kings.human >= 3 && x.kings.ai < 3);
-    const wonderBuiltOnlyAI = out.filter(x=>x.kings.ai >= 3 && x.kings.human < 3);
-    const wonderWinRateOnlyBuilderPlayer = pct(wonderBuiltOnlyPlayer.filter(x=>x.winner === "player").length, wonderBuiltOnlyPlayer.length);
-    const wonderWinRateOnlyBuilderAI = pct(wonderBuiltOnlyAI.filter(x=>x.winner === "ai").length, wonderBuiltOnlyAI.length);
+    const diamondsFirstByPlayer = out.filter(x=>x.diamondsTiers.bestOwners.includes(0));
+    const diamondsFirstByAI = out.filter(x=>x.diamondsTiers.bestOwners.includes(1));
+    const spadesFirstByPlayer = out.filter(x=>x.firstPrizeOwners.spades.includes(0));
+    const spadesFirstByAI = out.filter(x=>x.firstPrizeOwners.spades.includes(1));
+    const clubsFirstByPlayer = out.filter(x=>x.firstPrizeOwners.clubs.includes(0));
+    const clubsFirstByAI = out.filter(x=>x.firstPrizeOwners.clubs.includes(1));
+    const hearts3ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 3);
+    const hearts3ByAI = out.filter(x=>x.heartsLength.aiLongest >= 3);
+    const hearts4ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 4);
+    const hearts4ByAI = out.filter(x=>x.heartsLength.aiLongest >= 4);
+    const hearts5ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 5);
+    const hearts5ByAI = out.filter(x=>x.heartsLength.aiLongest >= 5);
+    const diamondsWinRatePlayer = pct(diamondsFirstByPlayer.filter(x=>x.winner === "player").length, diamondsFirstByPlayer.length);
+    const diamondsWinRateAI = pct(diamondsFirstByAI.filter(x=>x.winner === "ai").length, diamondsFirstByAI.length);
+    const spadesWinRatePlayer = pct(spadesFirstByPlayer.filter(x=>x.winner === "player").length, spadesFirstByPlayer.length);
+    const spadesWinRateAI = pct(spadesFirstByAI.filter(x=>x.winner === "ai").length, spadesFirstByAI.length);
+    const clubsWinRatePlayer = pct(clubsFirstByPlayer.filter(x=>x.winner === "player").length, clubsFirstByPlayer.length);
+    const clubsWinRateAI = pct(clubsFirstByAI.filter(x=>x.winner === "ai").length, clubsFirstByAI.length);
+    const hearts3WinRatePlayer = pct(hearts3ByPlayer.filter(x=>x.winner === "player").length, hearts3ByPlayer.length);
+    const hearts3WinRateAI = pct(hearts3ByAI.filter(x=>x.winner === "ai").length, hearts3ByAI.length);
+    const hearts4WinRatePlayer = pct(hearts4ByPlayer.filter(x=>x.winner === "player").length, hearts4ByPlayer.length);
+    const hearts4WinRateAI = pct(hearts4ByAI.filter(x=>x.winner === "ai").length, hearts4ByAI.length);
+    const hearts5WinRatePlayer = pct(hearts5ByPlayer.filter(x=>x.winner === "player").length, hearts5ByPlayer.length);
+    const hearts5WinRateAI = pct(hearts5ByAI.filter(x=>x.winner === "ai").length, hearts5ByAI.length);
     const swingH = {
       spades: avg(out.map(x=>x.wonderCategorySwing.human.spades)),
       diamonds: avg(out.map(x=>x.wonderCategorySwing.human.diamonds)),
@@ -642,7 +680,12 @@
       ["Calamità 10 (malus medio)", avg(out.map(x=>x.suits.calamities.modern10.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.modern10.ai)).toFixed(2)],
       ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
       ["Meraviglia (win% con Meraviglia)", wonderWinRatePlayer, wonderWinRateAI],
-      ["Meraviglia (win% quando solo io la costruisco)", wonderWinRateOnlyBuilderPlayer, wonderWinRateOnlyBuilderAI],
+      ["Quadri (win% con Quadri)", diamondsWinRatePlayer, diamondsWinRateAI],
+      ["Picche (win% con Picche)", spadesWinRatePlayer, spadesWinRateAI],
+      ["Fiori (win% con Fiori)", clubsWinRatePlayer, clubsWinRateAI],
+      ["Cuori (win% con Cuori 3+)", hearts3WinRatePlayer, hearts3WinRateAI],
+      ["Cuori (win% con Cuori 4+)", hearts4WinRatePlayer, hearts4WinRateAI],
+      ["Cuori (win% con Cuori 5+)", hearts5WinRatePlayer, hearts5WinRateAI],
       ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
       ["Meraviglia swing medio Δ♠", swingH.spades.toFixed(2), swingA.spades.toFixed(2)],
       ["Meraviglia swing medio Δ♦", swingH.diamonds.toFixed(2), swingA.diamonds.toFixed(2)],
