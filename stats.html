@@ -135,7 +135,7 @@
   };
 
   let Core = null;
-  const BATCH_MOVE_BUDGET_MS = 50;
+  const BATCH_MOVE_BUDGET_MS = 20;
 
   function avg(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
   function pct(x, n){ return n ? (100*x/n).toFixed(1) + "%" : "0.0%"; }
