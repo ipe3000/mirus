@@ -1389,47 +1389,64 @@ function cultureVP(cards){
 }
 
 function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
-  // Global, contested Culture (Mirus 2.0): award tiers are assigned across BOTH players' ♦ sequences.
-  // Tier 1: +8 to the best sequence (len ≥ 2)
-  // Tier 2: +4 to the second-best sequence (len ≥ 2)
-  // Tie-breaks: longer length wins; if tie, higher card wins.
-  // If both length and high card tie, the tier is shared.
+  // Global, contested Culture (Mirus 2.0): compare the best ♦ straight of each player.
+  // +8 to the longer straight (len ≥ 2), +4 to the shorter straight (len ≥ 2).
+  // Tie-break: same length => higher max card wins.
+  // Exact tie: +8 shared (or assigned by Wonder tie-break if enabled).
   const hRuns = diamondStraights(hCards, wonderMods);
   const aRuns = diamondStraights(aCards, wonderMods);
 
-  const cand = [];
-  for (const r of hRuns){ cand.push({owner:0, run:r, key:`${r.len}|${r.maxCard}`}); }
-  for (const r of aRuns){ cand.push({owner:1, run:r, key:`${r.len}|${r.maxCard}`}); }
-
-  cand.sort((x,y)=> (y.run.len-x.run.len) || (y.run.maxCard-x.run.maxCard) || (y.key.localeCompare(x.key)));
+  const bestH = hRuns[0] || null;
+  const bestA = aRuns[0] || null;
 
   let h = 0, a = 0;
   let bestGroup = [];
   let secondGroup = [];
 
+  if (!bestH && !bestA) return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  if (bestH && !bestA){
+    h += 8;
+    bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+    return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  }
+  if (!bestH && bestA){
+    a += 8;
+    bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  }
+
+  const cmp = (bestH.len-bestA.len) || (bestH.maxCard-bestA.maxCard);
   const tieOwner = wonderTieOwner(hCards, aCards, scoringOpts);
 
-  if (cand.length){
-    const bestKey = cand[0].key;
-    bestGroup = cand.filter(c=>c.key===bestKey);
-    if (tieOwner!==null && bestGroup.some(c=>c.owner===0) && bestGroup.some(c=>c.owner===1)){
-      bestGroup = bestGroup.filter(c=>c.owner===tieOwner);
+  if (cmp>0){
+    h += 8;
+    a += 4;
+    bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+    secondGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+  } else if (cmp<0){
+    a += 8;
+    h += 4;
+    bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    secondGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+  } else if (tieOwner===0 || tieOwner===1){
+    if (tieOwner===0){
+      h += 8;
+      a += 4;
+      bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+      secondGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    } else {
+      a += 8;
+      h += 4;
+      bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+      secondGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
     }
-    for (const c of bestGroup){
-        if (c.owner===0) h += 8; else a += 8;
-    }
-
-    const rest = cand.filter(c=>c.key!==bestKey);
-    if (rest.length){
-      const secondKey = rest[0].key;
-      secondGroup = rest.filter(c=>c.key===secondKey);
-      if (tieOwner!==null && secondGroup.some(c=>c.owner===0) && secondGroup.some(c=>c.owner===1)){
-        secondGroup = secondGroup.filter(c=>c.owner===tieOwner);
-      }
-      for (const c of secondGroup){
-          if (c.owner===0) h += 4; else a += 4;
-      }
-    }
+  } else {
+    h += 8;
+    a += 8;
+    bestGroup = [
+      {owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`},
+      {owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}
+    ];
   }
 
   return {h, a, hRuns, aRuns, bestGroup, secondGroup};
@@ -2842,7 +2859,7 @@ btnEndNew.addEventListener("click", ()=>{
 function culturePointsDetail(hCards, aCards, wonderMods=null){
   // Culture is CONTESTED: across both players there are only two award tiers:
   // - +8 to the best straight (len ≥ 2)
-  // - +4 to the second-best straight (next distinct tier, len ≥ 2)
+  // - +4 to the shorter straight (len ≥ 2)
   // In case of a tie on (len, high card), the tier is shared.
   const res = cultureContestVP(hCards, aCards, wonderMods);
 
