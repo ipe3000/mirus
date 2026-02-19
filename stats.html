@@ -68,8 +68,13 @@
           </select>
         </label>
         <button id="runBtn">Esegui simulazione</button>
+        <label>
+          <input id="keepAwake" type="checkbox" checked />
+          Mantieni schermo acceso durante la simulazione
+        </label>
         <div id="status" class="small">Pronto.</div>
         <div id="perf" class="small"></div>
+        <div id="wakeStatus" class="small"></div>
       </div>
     </aside>
 
@@ -122,6 +127,8 @@
   const runBtn = document.getElementById("runBtn");
   const statusEl = document.getElementById("status");
   const perfEl = document.getElementById("perf");
+  const wakeStatusEl = document.getElementById("wakeStatus");
+  const keepAwakeEl = document.getElementById("keepAwake");
 
   const els = {
     kGames: document.getElementById("kGames"),
@@ -135,7 +142,37 @@
   };
 
   let Core = null;
+  let wakeLock = null;
   const BATCH_MOVE_BUDGET_MS = 20;
+
+  function wakeLockSupported(){
+    return typeof navigator !== "undefined" && navigator.wakeLock && typeof navigator.wakeLock.request === "function";
+  }
+
+  async function requestWakeLock(){
+    if (!keepAwakeEl.checked) return;
+    if (!wakeLockSupported()){
+      wakeStatusEl.textContent = "Wake Lock non supportato: la simulazione può rallentare se lo schermo si spegne.";
+      return;
+    }
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeStatusEl.textContent = "Wake Lock attivo: schermo mantenuto acceso durante il batch.";
+      wakeLock.addEventListener("release", ()=>{
+        wakeStatusEl.textContent = "Wake Lock rilasciato.";
+        wakeLock = null;
+      });
+    } catch (err){
+      wakeStatusEl.textContent = "Impossibile attivare Wake Lock: la simulazione potrebbe fermarsi a schermo spento.";
+    }
+  }
+
+  async function releaseWakeLock(){
+    if (!wakeLock) return;
+    try { await wakeLock.release(); }
+    catch (_err) { }
+    wakeLock = null;
+  }
 
   function avg(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
   function pct(x, n){ return n ? (100*x/n).toFixed(1) + "%" : "0.0%"; }
@@ -317,15 +354,20 @@
 
     runBtn.disabled = true;
     statusEl.textContent = `Simulazione in corso: 0/${n}`;
+    await requestWakeLock();
 
     const out = [];
     const perf = {moves:0,totalMs:0,playerMs:0,aiMs:0,byAlgo:{},byLevel:{}};
     const batchStartedAt = performance.now();
-    for (let i=0;i<n;i++){
-      const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
-      out.push(simulateOne(starter, p0, p1, perf));
-      statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
-      await new Promise(r=>setTimeout(r, 0));
+    try {
+      for (let i=0;i<n;i++){
+        const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
+        out.push(simulateOne(starter, p0, p1, perf));
+        statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
+        await new Promise(r=>setTimeout(r, 0));
+      }
+    } finally {
+      await releaseWakeLock();
     }
 
     const playerWins = out.filter(x=>x.winner==="player").length;
@@ -420,6 +462,22 @@
       return;
     }
     statusEl.textContent = "Core caricato da index.html. Pronto.";
+    if (!wakeLockSupported()){
+      wakeStatusEl.textContent = "Wake Lock non supportato da questo browser.";
+      keepAwakeEl.checked = false;
+      keepAwakeEl.disabled = true;
+    }
+  });
+
+  document.addEventListener("visibilitychange", ()=>{
+    if (document.visibilityState === "visible" && runBtn.disabled && !wakeLock){
+      requestWakeLock();
+    }
+  });
+
+  keepAwakeEl.addEventListener("change", ()=>{
+    if (!keepAwakeEl.checked) releaseWakeLock();
+    else if (runBtn.disabled && !wakeLock) requestWakeLock();
   });
 })();
 </script>
