@@ -1984,6 +1984,8 @@ function aiChoose(state, options={}){
   };
   const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
   const level = options.level || document.getElementById("aiLevel")?.value || "mc";
+  const forcedKingFinal = chooseBestKingFinalBruteforce(state, 1);
+  if (forcedKingFinal){ report("kingFinal-bruteforce"); return forcedKingFinal; }
   if (level==="random") { const mv = aiRandom(state); report("random"); return mv; }
   if (level==="greedy") { const mv = aiGreedy(state); report("greedy"); return mv; }
   if ((deadline - performance.now()) <= MC_FALLBACK_MIN_REMAINING_MS) { const mv = aiFastHeuristic(state); report("fast"); return mv; }
@@ -2023,6 +2025,8 @@ function chooseMoveForPlayer(state, player, options={}){
   };
   const level = options.level || "mc";
   const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
+  const forcedKingFinal = chooseBestKingFinalBruteforce(state, player);
+  if (forcedKingFinal){ report("kingFinal-bruteforce"); return forcedKingFinal; }
   if (player===1) return aiChoose(state, {level, deadline, debugSink: options.debugSink});
   if (player!==0) return null;
 
@@ -2110,6 +2114,10 @@ function aiMonteCarlo(state, deadline=Infinity){
   const moves = enumerateMoves(pv, 1);
   if (moves.length <= 1) return moves[0];
 
+  if (moves.every(mv => mv.type === "kingFinal")){
+    return chooseBestKingFinalBruteforce(state, 1) || moves[0];
+  }
+
   const sims = adaptiveMCSimsForAge(pv);
   const root = buildRootCandidates(state, pv, moves);
   if (root.length <= 1) return root[0].move;
@@ -2156,6 +2164,39 @@ function aiMonteCarlo(state, deadline=Infinity){
   }
 
   return best;
+}
+
+function chooseBestKingFinalBruteforce(state, player){
+  const pv = Engine.getPublicView(state);
+  if (!pv.kingWonder || pv.kingWonder.phase !== "finalChoice") return null;
+  if (pv.kingWonder.builder !== player) return null;
+
+  const moves = enumerateMoves(pv, player).filter(mv => mv.type === "kingFinal");
+  if (!moves.length) return null;
+
+  let bestMove = moves[0];
+  let bestScore = -Infinity;
+
+  for (const mv of moves){
+    const sim = cloneEngineStateForSim(state);
+    const result = Engine.chooseKingWonder(sim, {cardId: mv.cardId, delta: mv.delta}, true);
+    if (!result?.ok) continue;
+
+    const scoreDiff = player===1
+      ? (sim.pub.score.ai - sim.pub.score.human)
+      : (sim.pub.score.human - sim.pub.score.ai);
+
+    if (
+      scoreDiff > bestScore ||
+      (scoreDiff === bestScore && mv.delta > bestMove.delta) ||
+      (scoreDiff === bestScore && mv.delta === bestMove.delta && String(mv.cardId).localeCompare(String(bestMove.cardId)) < 0)
+    ){
+      bestScore = scoreDiff;
+      bestMove = mv;
+    }
+  }
+
+  return bestMove;
 }
 
 function buildRootCandidates(state, publicView, moves){
