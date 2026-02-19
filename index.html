@@ -3605,7 +3605,8 @@ function render(){
       el.className="card";
       if (!s.removed) el.classList.add("clickable");
       if (s.removed) el.classList.add("removed");
-      if (s.removed && LAST_AI_PICK_ID && s.card && s.card.id===LAST_AI_PICK_ID && pub.currentPlayer===0) el.classList.add("lastAiGhost");
+      const isLastAiGhost = (s.removed && LAST_AI_PICK_ID && s.card && s.card.id===LAST_AI_PICK_ID && pub.currentPlayer===0);
+      if (isLastAiGhost) el.classList.add("lastAiGhost");
       if (s.faceDown && !s.removed) el.classList.add("faceDown");
 
       if (!s.removed && !s.faceDown && s.card){
