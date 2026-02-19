@@ -345,31 +345,9 @@
     }).join("");
   }
 
-  async function runBatch(){
-    if (!Core){ statusEl.textContent = "Core non ancora disponibile."; return; }
-    const n = Math.max(1, Math.min(20000, Number(document.getElementById("games").value) || 1000));
-    const p0 = document.getElementById("playerStrategy").value;
-    const p1 = document.getElementById("aiStrategy").value;
-    const startMode = document.getElementById("startMode").value;
 
-    runBtn.disabled = true;
-    statusEl.textContent = `Simulazione in corso: 0/${n}`;
-    await requestWakeLock();
 
-    const out = [];
-    const perf = {moves:0,totalMs:0,playerMs:0,aiMs:0,byAlgo:{},byLevel:{}};
-    const batchStartedAt = performance.now();
-    try {
-      for (let i=0;i<n;i++){
-        const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
-        out.push(simulateOne(starter, p0, p1, perf));
-        statusEl.textContent = `Simulazione in corso: ${i+1}/${n}`;
-        await new Promise(r=>setTimeout(r, 0));
-      }
-    } finally {
-      await releaseWakeLock();
-    }
-
+  function recomputeAndRender(out, perf, batchStartedAt){
     const playerWins = out.filter(x=>x.winner==="player").length;
     const aiWins = out.filter(x=>x.winner==="ai").length;
     const draws = out.length - playerWins - aiWins;
@@ -448,6 +426,39 @@
       .join(" • ");
     perfEl.textContent = `Tempo medio partita ${msPerGame.toFixed(1)} ms; mossa ${msPerMove.toFixed(2)} ms (Player ${perf.playerMs.toFixed(0)} ms, AI ${perf.aiMs.toFixed(0)} ms). Breakdown: ${algoBreakdown || "n/d"}.`;
 
+    return elapsed;
+  }
+
+  async function runBatch(){
+    if (!Core){ statusEl.textContent = "Core non ancora disponibile."; return; }
+    const n = Math.max(1, Math.min(20000, Number(document.getElementById("games").value) || 1000));
+    const p0 = document.getElementById("playerStrategy").value;
+    const p1 = document.getElementById("aiStrategy").value;
+    const startMode = document.getElementById("startMode").value;
+
+    runBtn.disabled = true;
+    statusEl.textContent = `Simulazione in corso: 0/${n}`;
+    await requestWakeLock();
+
+    const out = [];
+    const perf = {moves:0,totalMs:0,playerMs:0,aiMs:0,byAlgo:{},byLevel:{}};
+    const batchStartedAt = performance.now();
+    try {
+      for (let i=0;i<n;i++){
+        const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
+        out.push(simulateOne(starter, p0, p1, perf));
+        const done = i + 1;
+        statusEl.textContent = `Simulazione in corso: ${done}/${n}`;
+        if (done % 15 === 0 || done === n){
+          recomputeAndRender(out, perf, batchStartedAt);
+        }
+        await new Promise(r=>setTimeout(r, 0));
+      }
+    } finally {
+      await releaseWakeLock();
+    }
+
+    const elapsed = recomputeAndRender(out, perf, batchStartedAt);
     statusEl.textContent = `Completato: ${n} partite in ${(elapsed/1000).toFixed(2)}s.`;
     runBtn.disabled = false;
   }
