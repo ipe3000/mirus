@@ -1020,17 +1020,17 @@ const MC_ADAPTIVE_EARLY_TURNS = 6;
 const MC_SIMS_OPENING = 96;
 const MC_SIMS_EARLY = 220;
 const MC_SIMS_LATE = 420;
-const AI_MOVE_MAX_MS = 20;
+const AI_MOVE_MAX_MS = 2000;
 const MC_FALLBACK_MIN_REMAINING_MS = 1;
 const MC_ROOT_PRUNE_MARGIN = 2.4;
 const MC_ROOT_MIN_KEEP = 2;
 const MC_ROOT_KEEP_FRACTION = 0.75;
 const MC_UCB_EXPLORATION = 1.2;
-const MC_UCB_PRIOR_BONUS = 0.35;
+const MC_UCB_PRIOR_BONUS = 0.45;
 const MC_ROLLOUT_MAX_PLIES = 90;
-const MC_BOOTSTRAP_WEIGHT = 0.45;
-const MC_ROLLOUT_EPSILON_START = 0.10;
-const MC_ROLLOUT_EPSILON_END = 0.03;
+const MC_BOOTSTRAP_WEIGHT = 0.60;
+const MC_ROLLOUT_EPSILON_START = 0.06;
+const MC_ROLLOUT_EPSILON_END = 0.015;
 const AI_CANDIDATE_K_OPENING = 8;
 const AI_CANDIDATE_K_MID = 6;
 const AI_CANDIDATE_K_LATE = 4;
@@ -2377,9 +2377,29 @@ function tempoGivePenalty(publicView, state, mv, perspective){
   return 0.18 * moves.length + 0.45 * bestThreat;
 }
 
+function leaderUrgencyScore(publicView, perspective){
+  if (publicView.age !== "modern") return 0;
+
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+  const myKings = countKingsInCards(me);
+  const oppKings = countKingsInCards(opp);
+  const inAge = publicView.taken[0].concat(publicView.taken[1]).filter(c => c.age === "modern").length;
+
+  let bonus = 1.8;
+  if (myKings >= 2) bonus += 2.2;
+  if (oppKings >= 2) bonus += 1.0;
+  if (inAge >= 8) bonus += 0.8;
+
+  return bonus;
+}
+
 function scoreCandidateMove(state, publicView, mv, perspective){
   if (mv.type!=="take"){
-    if (mv.type==="leader") return {score: 1.2, parts:{special:1.2}};
+    if (mv.type==="leader"){
+      const urgency = leaderUrgencyScore(publicView, perspective);
+      return {score: 1.2 + urgency, parts:{special:1.2, leaderUrgency:urgency}};
+    }
     if (mv.type==="modernSwap") return {score: 0.9, parts:{special:0.9}};
     if (mv.type==="kingFinal") return {score: 0.4, parts:{special:0.4}};
     return {score: -1000, parts:{special:-1000}};
