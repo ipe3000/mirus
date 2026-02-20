@@ -3248,10 +3248,12 @@ function fitTableau(){
       return Math.max(0, r.length - 1);
     }));
     const slotsAcross = Math.max(1, maxSpan + 1);
+    const maxCols = slotsAcross;
     if (!rows) return;
 
     // Base gaps (we will scale them with the card size)
     const baseColGap = 8;
+    const baseRowGap = 6;
 
     // Card aspect ratio (height/width)
     const ratio = 96/72;
@@ -3302,6 +3304,7 @@ function fitTableau(){
     }
 
     const cardH = Math.round(cardW * ratio);
+    const rowStepRatio = clamp((cardH + rowGap) / Math.max(1, cardH), 0.72, 1.15);
     const rad = clamp(Math.round(cardW * 0.19), 10, 18);
 
     const root = document.documentElement;
@@ -3309,7 +3312,7 @@ function fitTableau(){
     root.style.setProperty("--cardH", `${cardH}px`);
     root.style.setProperty("--cardRad", `${rad}px`);
     root.style.setProperty("--colGap", `${colGap}px`);
-    root.style.setProperty("--rowGap", `0px`);
+    root.style.setProperty("--rowGap", `${rowGap}px`);
     root.style.setProperty("--rowStepRatio", `${rowStepRatio}`);
   }catch(e){
     // Never break the game UI because of fitting logic
