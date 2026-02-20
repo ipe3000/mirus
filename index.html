@@ -3239,7 +3239,15 @@ function fitTableau(){
 
     const layout = (typeof STATE !== "undefined" && STATE && STATE.pub) ? layoutForAge(STATE.pub.age) : layoutForAge("ancient");
     const rows = layout.rows.length;
-    const maxCols = Math.max(...layout.rows.map(r => r.length));
+    const rowMuls = layout.rowColMultipliers || [];
+    const maxSpan = Math.max(...layout.rows.map((r, ri)=>{
+      const muls = rowMuls[ri];
+      if (muls && muls.length){
+        return Math.max(...muls) - Math.min(...muls);
+      }
+      return Math.max(0, r.length - 1);
+    }));
+    const slotsAcross = Math.max(1, maxSpan + 1);
     if (!rows) return;
 
     // Base gaps (we will scale them with the card size)
