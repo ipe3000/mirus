@@ -230,6 +230,7 @@
   --cardRad:14px;
   --rowGap:6px;
   --colGap:8px;
+  --rowStepRatio:.72;
 }
 
 /* Make the app fill the dynamic viewport without cutting content on mobile browser UI changes */
@@ -1195,10 +1196,11 @@ function getTableauMetrics(){
   const cardW = _cssNum("--cardW", 72);
   const cardH = _cssNum("--cardH", 96);
   const colGap = _cssNum("--colGap", 10);
+  const rowStepRatio = _cssNum("--rowStepRatio", 0.72);
 
   // Overlap SOLO verticale: passo X >= cardW (nessun overlap), passo Y < cardH (leggero overlap)
   const stepX = cardW + colGap;
-  const stepY = cardH * 0.72;
+  const stepY = cardH * rowStepRatio;
 
   return { cardW, cardH, stepX, stepY };
 }
@@ -3242,7 +3244,6 @@ function fitTableau(){
 
     // Base gaps (we will scale them with the card size)
     const baseColGap = 8;
-    const baseRowGap = 6;
 
     // Card aspect ratio (height/width)
     const ratio = 96/72;
@@ -3300,7 +3301,8 @@ function fitTableau(){
     root.style.setProperty("--cardH", `${cardH}px`);
     root.style.setProperty("--cardRad", `${rad}px`);
     root.style.setProperty("--colGap", `${colGap}px`);
-    root.style.setProperty("--rowGap", `${rowGap}px`);
+    root.style.setProperty("--rowGap", `0px`);
+    root.style.setProperty("--rowStepRatio", `${rowStepRatio}`);
   }catch(e){
     // Never break the game UI because of fitting logic
     // (keep silent; debugging can be done via DevTools)
