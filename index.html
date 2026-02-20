@@ -3262,7 +3262,6 @@ function fitTableau(){
     // Card aspect ratio (height/width)
     const ratio = 96/72;
 
-<<<<<<< codex/suggest-design-for-panel-tableaupanel
     // Stronger width-first policy:
     // - let cards expand horizontally as much as possible,
     // - then solve height mainly via vertical overlap (row step ratio),
@@ -3326,55 +3325,6 @@ function fitTableau(){
     }
 
     const rad = clamp(Math.round(cardW * 0.19), 10, 20);
-=======
-    // Width-first fit: maximize card size to fill the row width,
-    // then tighten row gap / card width only if height overflows.
-    const wByWidth_1 = (availW - (maxCols - 1) * baseColGap) / maxCols;
-    let cardW = Math.floor(wByWidth_1);
-    // Keep it usable but allow shrinking for tiny screens.
-    // Max size scales slightly with viewport width (more relative to device size).
-    const viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-    const maxCardW = (viewportW <= 420) ? 92 : (viewportW <= 540 ? 96 : 94);
-    cardW = clamp(cardW, 38, maxCardW);
-
-    // Scale gaps with the card size and re-lock card width to the available width
-    let scale = clamp(cardW / 72, 0.55, 1.15);
-    let colGap = Math.round(baseColGap * scale);
-    let rowGap = Math.round(baseRowGap * scale);
-    cardW = Math.floor((availW - (maxCols - 1) * colGap) / maxCols);
-    cardW = clamp(cardW, 38, maxCardW);
-
-    // Height safety pass:
-    // 1) reduce row gap first,
-    // 2) then reduce card width if still needed.
-    const totalHeight = () => (rows * Math.round(cardW * ratio)) + ((rows - 1) * rowGap);
-    const minRowGap = 2;
-    if (totalHeight() > availH){
-      const rowGapByHeight = Math.floor((availH - rows * Math.round(cardW * ratio)) / Math.max(1, rows - 1));
-      rowGap = clamp(rowGapByHeight, minRowGap, rowGap);
-    }
-    if (totalHeight() > availH){
-      const maxCardH = (availH - (rows - 1) * rowGap) / rows;
-      const wByHeight = Math.floor(maxCardH / ratio);
-      cardW = clamp(Math.min(cardW, wByHeight), 38, maxCardW);
-
-      // keep horizontal fit coherent after height-limited shrink
-      scale = clamp(cardW / 72, 0.55, 1.15);
-      colGap = Math.round(baseColGap * scale);
-      cardW = Math.floor((availW - (maxCols - 1) * colGap) / maxCols);
-      cardW = clamp(cardW, 38, maxCardW);
-
-      // final hard guard if a very short viewport still overflows
-      if (totalHeight() > availH){
-        const maxCardH2 = (availH - (rows - 1) * minRowGap) / rows;
-        cardW = clamp(Math.floor(maxCardH2 / ratio), 38, maxCardW);
-        rowGap = minRowGap;
-      }
-    }
-
-    const cardH = Math.round(cardW * ratio);
-    const rad = clamp(Math.round(cardW * 0.19), 10, 18);
->>>>>>> main
 
     const root = document.documentElement;
     root.style.setProperty("--cardW", `${cardW}px`);
