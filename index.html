@@ -230,6 +230,7 @@
   --cardRad:14px;
   --rowGap:6px;
   --colGap:8px;
+  --rowStepRatio:.72;
 }
 
 /* Make the app fill the dynamic viewport without cutting content on mobile browser UI changes */
@@ -1195,10 +1196,11 @@ function getTableauMetrics(){
   const cardW = _cssNum("--cardW", 72);
   const cardH = _cssNum("--cardH", 96);
   const colGap = _cssNum("--colGap", 10);
+  const rowStepRatio = _cssNum("--rowStepRatio", 0.72);
 
   // Overlap SOLO verticale: passo X >= cardW (nessun overlap), passo Y < cardH (leggero overlap)
   const stepX = cardW + colGap;
-  const stepY = cardH * 0.72;
+  const stepY = cardH * rowStepRatio;
 
   return { cardW, cardH, stepX, stepY };
 }
@@ -1240,8 +1242,14 @@ function computeTableauGeometry(metrics, layout){
     }
   }
 
+  let maxRight = 0;
+  for (const p of pos){
+    if (!p) continue;
+    maxRight = Math.max(maxRight, p.x + cardW);
+  }
+  const width = Math.max(maxW, Math.ceil(maxRight));
   const height = cardH + Math.max(0, rows.length - 1) * stepY;
-  return { pos, width: maxW, height };
+  return { pos, width, height };
 }
 
 /* ============================================================
@@ -3237,49 +3245,94 @@ function fitTableau(){
 
     const layout = (typeof STATE !== "undefined" && STATE && STATE.pub) ? layoutForAge(STATE.pub.age) : layoutForAge("ancient");
     const rows = layout.rows.length;
-    const maxCols = Math.max(...layout.rows.map(r => r.length));
+    const rowMuls = layout.rowColMultipliers || [];
+    const maxSpan = Math.max(...layout.rows.map((r, ri)=>{
+      const muls = rowMuls[ri];
+      if (muls && muls.length){
+        return Math.max(...muls) - Math.min(...muls);
+      }
+      return Math.max(0, r.length - 1);
+    }));
+    const slotsAcross = Math.max(1, maxSpan + 1);
     if (!rows) return;
 
     // Base gaps (we will scale them with the card size)
     const baseColGap = 8;
-    const baseRowGap = 6;
 
     // Card aspect ratio (height/width)
     const ratio = 96/72;
 
-    // First pass: estimate card width with base gaps
-    const wByWidth_1 = (availW - (maxCols - 1) * baseColGap) / maxCols;
-    const hByHeight_1 = (availH - (rows - 1) * baseRowGap) / rows;
-    const wByHeight_1 = hByHeight_1 / ratio;
-
-    let cardW = Math.floor(Math.min(wByWidth_1, wByHeight_1));
-    // Keep it usable but allow shrinking for tiny screens.
-    // Max size scales slightly with viewport width (more relative to device size).
+    // Stronger width-first policy:
+    // - let cards expand horizontally as much as possible,
+    // - then solve height mainly via vertical overlap (row step ratio),
+    // - reduce card width only as a last resort.
     const viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-    const maxCardW = (viewportW <= 420) ? 92 : (viewportW <= 540 ? 96 : 94);
-    cardW = clamp(cardW, 38, maxCardW);
+    const maxCardWByViewport = (viewportW >= 1400) ? 126 : (viewportW >= 1200 ? 118 : (viewportW >= 980 ? 110 : (viewportW >= 760 ? 102 : 96)));
+    const minCardW = (viewportW <= 380) ? 24 : (viewportW <= 430 ? 26 : 30);
+    // Mobile-safe horizontal inset: preserves visible shadows/rings and avoids right-edge clipping on real devices.
+    const fitInsetX = (viewportW <= 980) ? 14 : 0;
+    const widthBudget = Math.max(1, availW - fitInsetX * 2);
 
-    // Scale gaps with the card size, then recompute with scaled gaps
-    const scale = clamp(cardW / 72, 0.55, 1.15);
-    const colGap = Math.round(baseColGap * scale);
-    const rowGap = Math.round(baseRowGap * scale);
+    let cardW = Math.floor((widthBudget - maxSpan * baseColGap) / slotsAcross);
+    cardW = clamp(cardW, minCardW, maxCardWByViewport);
 
-    const wByWidth_2 = (availW - (maxCols - 1) * colGap) / maxCols;
-    const hByHeight_2 = (availH - (rows - 1) * rowGap) / rows;
-    const wByHeight_2 = hByHeight_2 / ratio;
+    // Scale horizontal gap with card size and lock cards to full available width
+    let scale = clamp(cardW / 72, 0.35, 1.45);
+    let colGap = Math.max(2, Math.round(baseColGap * scale));
+    cardW = Math.floor((widthBudget - maxSpan * colGap) / slotsAcross);
+    cardW = clamp(cardW, minCardW, maxCardWByViewport);
 
-    cardW = Math.floor(Math.min(wByWidth_2, wByHeight_2));
-    cardW = clamp(cardW, 38, maxCardW);
+    let cardH = Math.round(cardW * ratio);
 
-    const cardH = Math.round(cardW * ratio);
-    const rad = clamp(Math.round(cardW * 0.19), 10, 18);
+    // Vertical fit is driven by row step ratio (used by absolute-position geometry)
+    // height = cardH + (rows-1) * (cardH * rowStepRatio)
+    const baseStepRatio = 0.72;
+    const minStepRatio = 0.50;
+    const maxStepRatio = 0.80;
+
+    let rowStepRatio = baseStepRatio;
+    const maxRatioByHeight = (availH / Math.max(1, cardH) - 1) / Math.max(1, rows - 1);
+    rowStepRatio = clamp(maxRatioByHeight, minStepRatio, maxStepRatio);
+
+    // If even with aggressive overlap it still does not fit, shrink card width by height constraint
+    const totalHeight = () => Math.round(cardH + Math.max(0, rows - 1) * (cardH * rowStepRatio));
+    if (totalHeight() > availH){
+      const wByHeightMinStep = Math.floor(availH / (ratio * (1 + Math.max(0, rows - 1) * minStepRatio)));
+      cardW = clamp(Math.min(cardW, wByHeightMinStep), minCardW, maxCardWByViewport);
+      cardH = Math.round(cardW * ratio);
+
+      scale = clamp(cardW / 72, 0.35, 1.45);
+      colGap = Math.max(2, Math.round(baseColGap * scale));
+      cardW = Math.floor((widthBudget - maxSpan * colGap) / slotsAcross);
+      cardW = clamp(cardW, minCardW, maxCardWByViewport);
+      cardH = Math.round(cardW * ratio);
+
+      const maxRatioByHeight2 = (availH / Math.max(1, cardH) - 1) / Math.max(1, rows - 1);
+      rowStepRatio = clamp(maxRatioByHeight2, minStepRatio, maxStepRatio);
+    }
+
+    // Final horizontal guard (mobile safe): ensure computed geometry cannot exceed panel width.
+    const maxCardWByWidthFinal = Math.floor((widthBudget - maxSpan * colGap) / slotsAcross);
+    if (Number.isFinite(maxCardWByWidthFinal)){
+      cardW = clamp(Math.min(cardW, maxCardWByWidthFinal), minCardW, maxCardWByViewport);
+      cardH = Math.round(cardW * ratio);
+
+      // Extra mobile guard: if still constrained, allow sub-min shrink only to avoid horizontal clipping.
+      if (cardW > maxCardWByWidthFinal){
+        cardW = Math.max(18, maxCardWByWidthFinal);
+        cardH = Math.round(cardW * ratio);
+      }
+    }
+
+    const rad = clamp(Math.round(cardW * 0.19), 10, 20);
 
     const root = document.documentElement;
     root.style.setProperty("--cardW", `${cardW}px`);
     root.style.setProperty("--cardH", `${cardH}px`);
     root.style.setProperty("--cardRad", `${rad}px`);
     root.style.setProperty("--colGap", `${colGap}px`);
-    root.style.setProperty("--rowGap", `${rowGap}px`);
+    root.style.setProperty("--rowGap", `0px`);
+    root.style.setProperty("--rowStepRatio", `${rowStepRatio}`);
   }catch(e){
     // Never break the game UI because of fitting logic
     // (keep silent; debugging can be done via DevTools)
