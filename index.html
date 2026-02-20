@@ -2367,6 +2367,110 @@ function foodMarginalGain(cards, card){
   return foodPoints(cards.concat([card])) - foodPoints(cards);
 }
 
+function bestTechRunLen(cards){
+  const set = valuesSet(cards,"H", null);
+  const runs = circularRuns(set).filter(r=>r.len>=3);
+  if (!runs.length) return 0;
+  let best = 0;
+  for (const r of runs){
+    if (r.len > best) best = r.len;
+  }
+  return best;
+}
+
+function heartsThreatFromCard(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="H") return 0;
+  const gain = heartsMarginalGain(cards, card);
+  const nextLen = bestTechRunLen(cards.concat([card]));
+  if (nextLen < 3) return 0.25 * Math.max(0, gain);
+
+  // Convex scaling: very relevant from len>=3, increasingly critical on 4/5.
+  const lenPressure = 1.5 + 1.8 * Math.max(0, nextLen - 3);
+  const bridgeBoost = (gain >= 4) ? 1.1 : 0;
+  return 0.45 * gain + lenPressure + bridgeBoost;
+}
+
+const AGE_SPADE_TOTAL_CACHE = Object.create(null);
+function totalSpadeValueForAge(age){
+  if (!AGE_SPADE_TOTAL_CACHE[age]){
+    const deck = makeAgeDeck(age);
+    AGE_SPADE_TOTAL_CACHE[age] = sumSuit(deck, "S", null);
+  }
+  return AGE_SPADE_TOTAL_CACHE[age];
+}
+
+function strategicModeWeights(publicView, perspective){
+  const meScore = (perspective===1) ? publicView.score.ai : publicView.score.human;
+  const oppScore = (perspective===1) ? publicView.score.human : publicView.score.ai;
+  const lead = meScore - oppScore;
+
+  const defend = Math.max(0, Math.min(1, lead / 10));
+  const chase = Math.max(0, Math.min(1, -lead / 10));
+
+  return {
+    self: 1.0 + 0.18 * chase,
+    deny: 1.0 + 0.40 * defend,
+    reveal: 1.0 + 0.28 * defend,
+    tempo: 1.0 + 0.20 * defend,
+    risk: 1.0 - 0.12 * chase
+  };
+}
+
+function spadeRecoverabilityPenalty(publicView, me, opp, card){
+  if (!card || card.kind!=="card" || card.suit!=="S") return 0;
+
+  const age = publicView.age;
+  const myS = sumSuit(me, "S", null);
+  const oppS = sumSuit(opp, "S", null);
+  const myAfter = myS + card.value;
+
+  const takenInAge = publicView.taken[0].concat(publicView.taken[1]).filter(c=>c.age===age);
+  const takenSpadeValueInAge = sumSuit(takenInAge, "S", null);
+  const totalAgeSpadeValue = totalSpadeValueForAge(age);
+  const remainingAgeSpadeValue = Math.max(0, totalAgeSpadeValue - takenSpadeValueInAge - card.value);
+
+  const gapAfter = oppS - myAfter;
+  if (gapAfter <= 0) return 0;
+
+  // If the gap is mathematically too large for the remaining era spades, heavily discourage.
+  if (gapAfter > remainingAgeSpadeValue) return 2.8 + 0.22 * (gapAfter - remainingAgeSpadeValue);
+
+  const recoverability = remainingAgeSpadeValue > 0 ? (gapAfter / remainingAgeSpadeValue) : 1;
+  if (recoverability >= 0.75) return 1.4 + 1.2 * (recoverability - 0.75);
+  if (recoverability >= 0.5) return 0.8;
+  return 0;
+}
+
+function leaderOpportunityScore(state, perspective){
+  const sim = cloneEngineStateForSim(state);
+  applyAIMoveToSim(sim, {type:"leader"});
+  if (sim.pub.currentPlayer !== perspective) return 0;
+
+  const pv1 = Engine.getPublicView(sim);
+  const takes1 = enumerateMoves(pv1, perspective).filter(m=>m.type==="take");
+  if (!takes1.length) return 0;
+
+  let best1 = null;
+  for (const mv of takes1){
+    const score = scoreCandidateMove(sim, pv1, mv, perspective).score;
+    if (!best1 || score > best1.score) best1 = {mv, score};
+  }
+  if (!best1) return 0;
+
+  applyAIMoveToSim(sim, best1.mv);
+  if (sim.pub.currentPlayer !== perspective) return 0.18 * Math.max(0, best1.score);
+
+  const pv2 = Engine.getPublicView(sim);
+  const takes2 = enumerateMoves(pv2, perspective).filter(m=>m.type==="take");
+  let best2 = 0;
+  for (const mv of takes2){
+    const score = scoreCandidateMove(sim, pv2, mv, perspective).score;
+    if (score > best2) best2 = score;
+  }
+
+  return 0.16 * Math.max(0, best1.score) + 0.12 * Math.max(0, best2);
+}
+
 function kingLeverageScore(me, opp, card){
   if (!card || card.kind!=="king") return 0;
   const myKings = countKingsInCards(me);
@@ -2436,7 +2540,7 @@ function tempoGivePenalty(publicView, state, mv, perspective){
     const meCards = pv2.taken[perspective];
     let threat = 0;
     if (c.kind==="king") threat += 2.8;
-    threat += 0.9 * heartsMarginalGain(oppCards, c);
+    threat += heartsThreatFromCard(oppCards, c);
     threat += 0.8 * foodMarginalGain(oppCards, c);
     threat += 0.35 * Math.max(0, estimateDenialScore(pv2, m, opp));
     if (c.suit==="D"){
@@ -2471,7 +2575,8 @@ function scoreCandidateMove(state, publicView, mv, perspective){
   if (mv.type!=="take"){
     if (mv.type==="leader"){
       const urgency = leaderUrgencyScore(publicView, perspective);
-      return {score: 1.2 + urgency, parts:{special:1.2, leaderUrgency:urgency}};
+      const opportunity = leaderOpportunityScore(state, perspective);
+      return {score: 1.2 + urgency + opportunity, parts:{special:1.2, leaderUrgency:urgency, leaderOpportunity:opportunity}};
     }
     if (mv.type==="modernSwap") return {score: 0.9, parts:{special:0.9}};
     if (mv.type==="kingFinal") return {score: 0.4, parts:{special:0.4}};
@@ -2493,16 +2598,24 @@ function scoreCandidateMove(state, publicView, mv, perspective){
   const denyGain = estimateDenialScore(publicView, mv, perspective);
   const reveal = revealPenalty(publicView, mv, perspective);
   const tempo = tempoGivePenalty(publicView, state, mv, perspective);
+  const mode = strategicModeWeights(publicView, perspective);
 
   let risk = 0;
   if (wouldCompleteCalamity(me, card, 5)) risk += 5.5;
   if (wouldCompleteCalamity(me, card, 10)) risk += 7.5;
   if (card.suit==="H" && heartsGain<=0) risk += 1.2;
   if (card.suit==="C" && foodGain<=0) risk += 0.7;
+  risk += spadeRecoverabilityPenalty(publicView, me, opp, card);
+
+  const weightedSelf = mode.self * selfGain;
+  const weightedDeny = mode.deny * denyGain;
+  const weightedReveal = mode.reveal * reveal;
+  const weightedTempo = mode.tempo * tempo;
+  const weightedRisk = mode.risk * risk;
 
   return {
-    score: selfGain + denyGain - reveal - tempo - risk,
-    parts: {selfGain, denyGain, reveal, tempo, risk}
+    score: weightedSelf + weightedDeny - weightedReveal - weightedTempo - weightedRisk,
+    parts: {selfGain:weightedSelf, denyGain:weightedDeny, reveal:weightedReveal, tempo:weightedTempo, risk:weightedRisk}
   };
 }
 
