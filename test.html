@@ -893,45 +893,24 @@ body.playing #leaderBtnSide{ display:inline-flex; }
 
 
 
-/* === Layout stability hotfix: prevent overlap/cropping on all viewports === */
-body{
-  overflow:auto;
-}
-
+/* === Requested layout lock: hide header and keep both sections visible without scrolling/overlap === */
+header{ display:none !important; }
 main{
-  overflow:auto;
-  height:auto;
-  min-height:0;
-  padding-bottom:12px;
+  padding:8px;
+  width:min(100%, 96vw);
+  max-width:96vw;
 }
-
 .grid{
-  grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr) !important;
-  align-items:start;
+  grid-template-rows:minmax(0, 1fr) !important;
+  align-items:stretch;
 }
-
-.panel .bd,
-.tableauPanel .bd{
-  overflow:auto !important;
+.grid > .tableauPanel,
+.grid > aside.panel{
+  overflow:hidden;
 }
-
-#tableau{
-  max-width:100%;
-}
-
-/* Keep controls accessible during play; hiding header caused clipped layouts */
-body.playing header{ display:block !important; }
-
 @media (max-width: 980px){
   .grid{
-    grid-template-columns:1fr !important;
-    grid-template-rows:auto auto !important;
-  }
-
-  .grid > aside.panel{
-    height:auto !important;
-    min-height:0 !important;
-    max-height:none !important;
+    grid-template-rows:minmax(0, 1fr) minmax(160px, 38dvh) !important;
   }
 }
 
