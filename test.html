@@ -1,0 +1,3943 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mirus – Human vs AI (Monte Carlo, fair)</title>
+  <style>
+
+    :root{
+      --bg:#00c3ff52; --panel:#111827; --text:#fff; --muted:#fff;
+      --acc:#22c55e; --warn:#f59e0b; --danger:#ef4444; --border:#334155;
+      --shadow: 0 10px 25px rgba(0,0,0,.35); --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: radial-gradient(1200px 800px at 20% 0%, #1f2a44 0%, var(--bg) 55%, #050814 100%);
+      color:var(--text);
+      height:100vh;
+      overflow:hidden;
+    }
+    header{
+      padding:10px 12px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(17,24,39,.9), rgba(17,24,39,.4));
+      backdrop-filter: blur(6px);
+      position: sticky; top:0; z-index: 10;
+    }
+    header .row{display:flex; gap:12px; flex-wrap:wrap; justify-content:space-between; align-items:center}
+    h1{margin:0; font-size:15px; font-weight:650; letter-spacing:.2px}
+    .controls{display:flex; gap:8px; flex-wrap:nowrap; align-items:center; justify-content:flex-end; overflow-x:auto; padding-bottom:2px;}
+    button, select, input[type="checkbox"]{
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      color:var(--text);
+      padding:7px 9px;
+      border-radius:10px;
+      cursor:pointer;
+      outline:none;
+    }
+    button.primary{background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.35)}
+    button.danger{background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.35)}
+    button:disabled{opacity:.45; cursor:not-allowed}
+    main{padding:10px; max-width: 1180px; margin:0 auto; height: calc(100vh - 78px); overflow:hidden;}
+    .grid{display:grid; grid-template-columns: 1.25fr .75fr; gap:12px; height:100%;}
+    @media (max-width: 980px){ .grid{grid-template-columns: 1fr} }
+    .panel{
+      background: rgba(17,24,39,.72);
+      display:flex;
+      flex-direction:column;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .panel .hd{padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; justify-content:space-between; align-items:center; gap:10px;}
+    .panel .bd{padding:10px; flex:1; overflow:auto}
+    .pill{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.16); color: var(--muted);}
+    .pill.ok{border-color: rgba(34,197,94,.35); color: rgba(34,197,94,.95)}
+    .pill.warn{border-color: rgba(245,158,11,.35); color: rgba(245,158,11,.95)}
+    .status{display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:13px; color: var(--muted);}
+    .tableau{position:relative; margin:0 auto; padding:4px 0 2px;}
+    .rowCards{display:none;}
+    .card{
+      border-radius: 14px;
+      background: linear-gradient(180deg, #1f2937, #111827);
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow: 0 10px 18px rgba(0,0,0,.32);
+      position:absolute; display:flex; align-items:center; justify-content:center; text-align:center;
+      user-select:none;
+    }
+    .card.clickable{cursor:pointer}
+    .card .big{font-size: 22px; font-weight: 720; line-height: 1.0;}
+    .card .small{
+      position:absolute;
+      top:6px;
+      bottom:auto;
+      left:50%;
+      transform: translateX(-50%);
+      text-align:center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .3px;
+      color: rgba(255,255,255,.72);
+    }
+    .card.removed{opacity:.18}
+    /* Accessible (selectable) cards: brighter and visually "on top" */
+    .card.accessible{
+      box-shadow:0 0 0 4px rgba(145, 126, 185, 0.95), 0 0 0 7px rgb(145, 126, 185, 0.45), 0 18px 34px rgba(0,0,0,.55);
+      z-index: 4;
+    }
+    .card.accessible::before{
+      content:"";
+      position:absolute; inset:0;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
+      pointer-events:none;
+    }
+
+    /* Blocked (not selectable because covered by other cards): slightly darker and visually "under" */
+    .card.blocked{
+      filter: saturate(.85) brightness(.90);
+      box-shadow: 0 6px 12px rgba(0,0,0,.35);
+      transform: translateY(2px) scale(.985);
+      z-index: 1;
+      cursor: not-allowed;
+    }
+    .card.blocked::after{
+      content:"";
+      position:absolute; inset:0;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 55%);
+      pointer-events:none;
+    }
+
+    /* Cursor fixes: face-down and removed cards should not look clickable */
+    .card.faceDown{cursor: default;}
+    .card.removed{cursor: default;}
+
+    /* Face colors by suit/type (harmonized gradients) */
+	.card.suitC{ background: linear-gradient(180deg, rgba(34,197,94), rgba(34,197,94)); border-color: rgba(34,197,94); }
+	.card.suitS{ background: linear-gradient(180deg, rgba(239,68,68), rgba(239,68,68)); border-color: rgba(239,68,68); }
+	.card.suitD{ background: linear-gradient(180deg, rgba(56,189,248), rgba(56,189,248)); border-color: rgba(56,189,248); }
+	.card.suitH{ background: linear-gradient(180deg, rgba(250,204,21), rgba(250,204,21)); border-color: rgba(250,204,21); }
+	.card.wonder{ background: linear-gradient(180deg, rgba(168,85,247), rgba(147,51,234)); border-color: rgba(192,132,252,.95); }
+    .card.suitC .cornerL,.card.suitC .cornerR,
+    .card.suitS .cornerL,.card.suitS .cornerR,
+    .card.suitD .cornerL,.card.suitD .cornerR,
+    .card.suitH .cornerL,.card.suitH .cornerR{ color: rgba(255,255,255,.82); }
+
+    .card .cornerL{position:absolute; top:6px; left:7px; font-size:11px; color: rgba(255,255,255,.78);}
+    .card .cornerR{position:absolute; top:6px; right:7px; font-size:11px; color: rgba(255,255,255,.78);}
+    .kv{display:grid; grid-template-columns: 1fr 1fr; gap:8px;}
+    .box{border:1px solid rgba(255,255,255,.10); border-radius: 14px; padding: 10px; background: rgba(0,0,0,.14);}
+    .box h3{margin:0 0 8px; font-size: 13px; letter-spacing:.2px;}
+    .box p{margin:0; font-size: 13px; color: var(--muted); line-height:1.35}
+    .cardsList{display:flex; flex-wrap:wrap; gap:6px; margin-top: 10px;}
+
+    .compareWrap{margin-top:4px;}
+    .compareTable{width:100%; border-collapse:separate; border-spacing:0 8px; table-layout:fixed;}
+    .compareTable th{font-size:12px; color:rgba(255,255,255,.72); text-align:left; padding:0 8px 4px; font-weight:650;}
+    .compareTable th:first-child{width:128px;}
+    .compareTable td{padding:0 8px; vertical-align:top;}
+
+    .compareRow.suitS td .battleCell{ background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.24); }
+    .compareRow.suitC td .battleCell{ background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.24); }
+    .compareRow.suitH td .battleCell{ background: rgba(250,204,21,.10); border-color: rgba(250,204,21,.24); }
+    .compareRow.suitD td .battleCell{ background: rgba(56,189,248,.10); border-color: rgba(56,189,248,.24); }
+    .compareRow.wonders td .battleCell{ background: rgba(168,85,247,.12); border-color: rgba(168,85,247,.34); }
+
+    .catCell{
+      font-size:12px;
+      font-weight:700;
+      color:rgba(255,255,255,.92);
+      border-radius:10px;
+      padding:8px 9px;
+      border-left:4px solid transparent;
+      background:rgba(255,255,255,.03);
+      letter-spacing:.2px;
+      white-space:nowrap;
+    }
+    .catCell.suitS{ background: rgba(239,68,68,.14); border-left-color: rgba(239,68,68,.9); }
+    .catCell.suitC{ background: rgba(34,197,94,.14); border-left-color: rgba(34,197,94,.9); }
+    .catCell.suitH{ background: rgba(250,204,21,.14); border-left-color: rgba(250,204,21,.9); }
+    .catCell.suitD{ background: rgba(56,189,248,.14); border-left-color: rgba(56,189,248,.9); }
+    .catCell.wonders{ background: rgba(168,85,247,.18); border-left-color: rgba(192,132,252,.95); }
+
+    .battleCell{
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      padding:7px 8px;
+      min-height:56px;
+    }
+    .battleHead{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;}
+    .battleValue{font-size:15px; font-weight:760; line-height:1; color:rgba(255,255,255,.96);}
+
+    .suitValues{display:flex; gap:5px; flex-wrap:wrap;}
+
+    .chip{padding:4px 7px; border-radius: 999px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); font-size: 12px; color: rgba(255,255,255,.85);}
+    .chip.marked{border-color: rgba(250,204,21,.72); box-shadow: 0 0 0 1px rgba(250,204,21,.35) inset; background: rgba(250,204,21,.14); color: rgba(255,248,220,.98);}
+    .chip.wonder{border-color: rgba(168,85,247,.58); background: rgba(168,85,247,.18); color: rgba(241,229,255,.98);}
+    .chip.lastAi{border-color: rgba(125,211,252,.70); background: rgba(14,116,144,.28); color: rgba(224,242,254,.98);}
+    .log{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:12px; white-space: pre-wrap; line-height:1.25;
+      max-height: 180px; overflow:auto;
+      background: rgba(0,0,0,.20);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 14px; padding: 10px;
+    }
+    .note{font-size:12px; color: var(--muted); line-height:1.35;}
+    .hr{height:1px; background: rgba(255,255,255,.08); margin:12px 0}
+    code{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+  
+    .tableauPanel{
+      align-self:start;
+    }
+    .tableauPanel .bd{
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      flex:0 0 auto;
+    }
+    .tableauPanel .tableau{
+      flex:0 0 auto;
+      justify-content:center;
+    }
+
+  
+    @media (max-height: 760px){
+      .card .big{font-size:20px;}
+      .rowCards{gap:6px;}
+      .tableau{gap:5px;}
+      .panel .bd{padding:8px;}
+      .log{max-height: 150px;}
+    }
+
+  
+  
+
+/* === Responsive fit patch: keep the entire tableau visible (no page scroll) === */
+:root{
+  --cardW:72px;
+  --cardH:96px;
+  --cardRad:14px;
+  --rowGap:6px;
+  --colGap:8px;
+  --rowStepRatio:.72;
+}
+
+/* Make the app fill the dynamic viewport without cutting content on mobile browser UI changes */
+html, body{ height:100%; }
+body{
+  min-height: 100vh;
+  height: 100dvh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+/* Let <main> consume the remaining space (no fixed header guesswork) */
+main{
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  width: min(100%, 90vw);
+  max-width: 90vw;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Keep grid/panels shrinkable within the viewport */
+.grid{ height:100%; min-height:0; flex: 1 1 auto; }
+.panel{ min-height:0; }
+.panel .bd{ min-height:0; }
+
+/* Tableau layout uses CSS vars so JS can shrink cards to fit */
+.tableau{ gap: var(--rowGap); width:100%; }
+.rowCards{ gap: var(--colGap); }
+
+/* Card sizing via CSS vars (JS updates them) */
+.card{
+  width: var(--cardW);
+  height: var(--cardH);
+  border-radius: var(--cardRad);
+  padding: clamp(4px, calc(var(--cardW) * 0.085), 6px);
+}
+.card .big{ font-size: clamp(16px, calc(var(--cardW) * 0.305), 22px); }
+.card .small{ font-size: clamp(9px, calc(var(--cardW) * 0.150), 11px); top: clamp(4px, calc(var(--cardW) * 0.083), 6px); }
+.card .cornerL, .card .cornerR{
+  font-size: clamp(9px, calc(var(--cardW) * 0.150), 11px);
+  top: clamp(4px, calc(var(--cardW) * 0.083), 6px);
+}
+.card .cornerL{ left: clamp(5px, calc(var(--cardW) * 0.095), 7px); }
+.card .cornerR{ right: clamp(5px, calc(var(--cardW) * 0.095), 7px); }
+
+/* The tableau panel should never scroll; the tableau must fit instead */
+.tableauPanel .bd{ overflow:hidden; }
+
+/* On narrow screens, reserve a controlled height for the side panel so the tableau always has room */
+@media (max-width: 980px){
+  .grid{
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .grid > .tableauPanel{ min-height: 0; }
+  .grid > aside.panel{
+    height: 26vh;
+    min-height: 140px;
+    max-height: 230px;
+  }
+  .tableauPanel details{ display:none; }
+}
+
+/* On short screens, hide non-essential notes to preserve tableau height */
+@media (max-height: 720px){
+  .tableauPanel details{ display:none; }
+  header{ padding:8px 10px; }
+  .panel .hd{ padding:10px 12px; }
+  .panel .bd{ padding:8px; }
+  .log{ max-height: 140px; }
+}
+
+
+/* === UI/UX polish patch (styling only; game logic unchanged) === */
+:root{
+  --focus: rgba(56,189,248,.95);
+  --ring: 0 0 0 3px rgba(56,189,248,.30);
+  --shadowHard: 0 18px 44px rgba(0,0,0,.45);
+  --glass: rgba(255,255,255,.06);
+  --glass2: rgba(255,255,255,.10);
+}
+
+/* Slightly clearer typography + spacing */
+body{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+h1{ font-size: 15.5px; }
+header{ padding: 10px 12px; }
+
+/* Controls: better touch targets, hover/active, focus ring */
+.controls{ gap: 10px; }
+button, select{
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  transition: transform .08s ease, background .14s ease, border-color .14s ease, box-shadow .14s ease, filter .14s ease;
+}
+select{
+  appearance:none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(229,231,235,.75) 50%),
+    linear-gradient(135deg, rgba(229,231,235,.75) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+button:hover:not(:disabled), select:hover:not(:disabled){
+  background: rgba(255,255,255,.085);
+  border-color: rgba(255,255,255,.20);
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
+}
+button:active:not(:disabled){ transform: translateY(1px); }
+button.primary:hover:not(:disabled){
+  background: rgba(34,197,94,.22);
+  border-color: rgba(34,197,94,.48);
+}
+button.danger:hover:not(:disabled){
+  background: rgba(239,68,68,.20);
+  border-color: rgba(239,68,68,.48);
+}
+button:focus-visible, select:focus-visible, summary:focus-visible{
+  outline:none;
+  box-shadow: var(--ring);
+  border-color: rgba(56,189,248,.45);
+}
+input[type="checkbox"]{
+  width: 16px; height: 16px;
+  accent-color: rgba(34,197,94,.95);
+}
+
+/* Panels: a bit more "glass", clearer separation */
+.panel{
+  background: linear-gradient(180deg, rgba(17,24,39,.78), rgba(17,24,39,.58));
+  border-color: rgba(255,255,255,.12);
+  box-shadow: var(--shadowSoft);
+}
+.panel .hd{
+  background: linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,0));
+}
+.panel .bd{ scrollbar-gutter: stable both-edges; }
+
+/* PIlls and chips */
+.pill{
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.18);
+}
+.pill.turn-ai{
+  animation: turnAiBlink .9s step-end infinite;
+}
+
+@keyframes turnAiBlink{
+  50%{ opacity:.35; }
+}
+.chip{
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  border-color: rgba(255,255,255,.14);
+}
+
+/* Cards: micro-interactions + clearer indicators */
+.card{
+  transition: transform .10s ease, box-shadow .14s ease, filter .14s ease;
+  will-change: transform;
+}
+@media (hover:hover){
+  .card.accessible:hover{
+    transform: translateY(-4px) scale(1.02);
+    filter: brightness(1.06) saturate(1.06);
+  }
+  .card.blocked:hover{
+    filter: saturate(.82) brightness(.88);
+  }
+}
+.card.accessible{ filter: brightness(1.03) saturate(1.05); }
+.card.faceDown{
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,255,255,.22) 0px,
+      rgba(255,255,255,.22) 6px,
+      transparent 6px,
+      transparent 12px
+    ),
+    linear-gradient(180deg, #475569, #1f2937);
+  border-color: rgba(148,163,184,.65);
+  box-shadow: 0 8px 16px rgba(0,0,0,.22);
+}
+.card.removed{ filter: grayscale(.2) brightness(.9); }
+
+.card.lastAiGhost{
+  opacity:1;
+  filter: none;
+  background: linear-gradient(180deg, #374151, #1f2937);
+  border-color: rgba(75,85,99,.95);
+}
+.card.lastAiGhost .big,
+.card.lastAiGhost .small,
+.card.lastAiGhost .cornerL,
+.card.lastAiGhost .cornerR{
+  color: rgba(255,255,255,.92);
+}
+
+/* Corner badges: hide when empty + render as small "badges" */
+.card .cornerL:empty, .card .cornerR:empty{ display:none; }
+.card .cornerL, .card .cornerR{
+  display:flex; align-items:center; justify-content:center;
+  min-width: 18px; height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(6px);
+  text-shadow: 0 1px 0 rgba(0,0,0,.35);
+}
+.card .cornerL{ justify-content:flex-start; }
+.card.accessible .cornerR{
+  background: rgba(34,197,94,.16);
+  border-color: rgba(34,197,94,.42);
+  color: rgba(34,197,94,.98);
+}
+.card.blocked .cornerR{
+  background: rgba(0,0,0,.26);
+  border-color: rgba(255,255,255,.10);
+  color: rgba(229,231,235,.80);
+}
+
+/* Log: slightly clearer + nicer scrollbars (where supported) */
+.log{
+  line-height: 1.32;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.log::-webkit-scrollbar{ width: 10px; }
+.log::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.14);
+  border: 2px solid rgba(0,0,0,0);
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.log::-webkit-scrollbar-track{ background: rgba(0,0,0,.12); border-radius: 999px; }
+
+/* Modal: cleaner glass + subtle entrance */
+#modalOverlay > div{ animation: _modalIn .16s ease-out; }
+@keyframes _modalIn{
+  from{ transform: translateY(8px) scale(.985); opacity:.2; }
+  to{ transform: translateY(0) scale(1); opacity:1; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *{ transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+}
+
+
+/* =========================
+   UX fit: keep tableau + taken cards fully visible (no page scrolling)
+   ========================= */
+
+/* Make taken cards denser and responsive to short viewports */
+.suitLabel{ min-width: 74px; }
+.chip{
+  font-size: clamp(9px, 1.35vh, 12px);
+  padding: clamp(2px, .45vh, 4px) clamp(4px, .9vh, 7px);
+  border-radius: 999px;
+}
+.suitRows{ gap: 7px; }
+.suitRow{ gap: 7px; }
+
+/* Optional tableau structure note: hide on small screens to preserve height */
+@media (max-width: 980px){
+  details.tableauDetails{ display:none; }
+}
+
+/* On narrow screens, allocate enough space for taken cards while keeping tableau auto-fit */
+@media (max-width: 980px){
+  .grid{
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 6px;
+  }
+  .grid > .tableauPanel{ min-height: 0; }
+  .grid > aside.panel{
+    height: clamp(190px, 34dvh, 340px);
+    min-height: 190px;
+    max-height: 360px;
+  }
+
+  /* Compact side panel spacing */
+  .panel .bd{ padding: 10px; }
+  .kv{ gap: 8px; }
+  .box{ padding: 9px; border-radius: 14px; }
+  .box h3{ margin-bottom: 6px; font-size: 12px; }
+
+  /* Summaries are helpful but can steal vertical space on mobile */
+  #humanSummary, #aiSummary{ display:none; }
+
+  /* Keep the log available but small; it can scroll internally */
+  .log{ max-height: 86px; }
+  .logNote{ display:none; }
+}
+
+/* Very short screens: further tighten the side panel */
+@media (max-width: 980px) and (max-height: 700px){
+  .grid > aside.panel{ height: clamp(170px, 30dvh, 300px); min-height: 170px; }
+  .suitRows{ gap: 6px; }
+  .suitRow{ gap: 6px; }
+  .suitLabel{ min-width: 64px; font-size: 11px; }
+  .log{ max-height: 72px; }
+}
+
+
+/* Ghost button (subtle) */
+button.ghost{
+  background: rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);
+  color: rgba(229,231,235,.92);
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+/* Log as an overlay drawer on mobile: keep the playfield uncluttered */
+#logOpenBtn{ display:none; }
+#logCloseBtn{ display:none; }
+
+@media (max-width: 980px){
+  #logOpenBtn{ display:inline-flex; }
+  .logInline{ display:none; }         /* hide inline log separator */
+  #logBox{ display:none; }            /* log does not consume layout height on mobile */
+  body.logOpen #logBackdrop{ display:block !important; }
+  body.logOpen #logBox{
+    display:block !important;
+    position:fixed;
+    left:50%;
+    top:50%;
+    transform: translate(-50%,-50%);
+    width: min(720px, calc(100% - 28px));
+    max-height: calc(100dvh - 28px);
+    z-index: 66;
+    background: rgba(17,24,39,.97);
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow: 0 22px 60px rgba(0,0,0,.60);
+  }
+  body.logOpen #logCloseBtn{ display:inline-flex; }
+  body.logOpen #logBox .log{ max-height: calc(100dvh - 220px); }
+}
+
+@media (min-width: 981px){
+  #logOpenBtn{ display:none; }
+  #logCloseBtn{ display:none; }
+}
+
+.logHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 8px;
+}
+
+
+    .suitMeta{font-size:12px; color: rgba(255,255,255,.86); line-height:1;}
+    .suitSep{color: rgba(255,255,255,.25); margin: 0 4px;}
+    .suitValues{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+    .chip.vp{border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.12); color: rgba(34,197,94,.92);}
+    .chip.marked{border-color: rgba(251,191,36,.72); background: rgba(251,191,36,.20); color: rgba(255,248,220,.98); box-shadow: inset 0 0 0 1px rgba(251,191,36,.26); font-weight:700;}
+    .chip.wonder{border-color: rgba(168,85,247,.58); background: rgba(168,85,247,.18); color: rgba(241,229,255,.98);}
+    .vpBadge{color: rgba(34,197,94,.92);}
+
+
+/* === Card-face label visibility patch ===
+   Ensure the suit label (MILI/TECH/FOOD/CULT) is always readable,
+   including on "blocked" cards that have a dark overlay pseudo-element.
+*/
+.card .big{ position:relative; z-index: 2; }
+.card .small{
+  z-index: 3;
+  color: rgba(255,255,255,.96);
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  padding: 1px 3px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  text-shadow: 0 1px 0 rgba(0,0,0,.35);
+  backdrop-filter: blur(6px);
+}
+/* Non mostrare mai i corner text sul dorso */
+.card.faceDown .small,
+.card.faceDown .big{
+  display: none !important;
+}
+.card .cornerL, .card .cornerR{ z-index: 4; }
+.card.blocked::after{ z-index: 1; }
+.card.accessible::before{ z-index: 1; }
+
+/* === In-game viewport: hide the top header while playing (more space for tableau + taken cards) === */
+body.playing header{ display:none; }
+
+/* Show an in-game Leader button inside the side panel header (header is hidden while playing) */
+#leaderBtnSide{ display:none; }
+body.playing #leaderBtnSide{ display:inline-flex; }
+
+
+/* === King Wonder overlay (Mirus 2.0) === */
+#kingOverlay{display:none; position:fixed; inset:0; background: rgba(0,0,0,.62); z-index: 998; align-items:center; justify-content:center; padding: clamp(8px, 2.4vh, 12px); --kingMiniW:58px; --kingMiniH:80px; --kingGap:6px;}
+#kingOverlay .panelBox{ max-width: 760px; width:100%; max-height: calc(100dvh - (clamp(8px, 2.4vh, 12px) * 2)); overflow:hidden; background: rgba(17,24,39,.86); border:1px solid rgba(255,255,255,.16); border-radius: 16px; box-shadow: 0 22px 60px rgba(0,0,0,.65); padding: 10px; display:flex; flex-direction:column; }
+#kingOverlay #kingCardsGrid{ flex:1; min-height:0; overflow:auto; padding-right:2px; }
+#kingOverlay .miniGrid{ display:flex; flex-wrap:wrap; gap:var(--kingGap); justify-content:center; margin-top:8px; align-content:flex-start; }
+#kingOverlay .kingSuitGroup{margin-top:8px;}
+#kingOverlay .kingSuitTitle{font-size:12px; color: rgba(229,231,235,.78); margin-bottom:6px;}
+#kingOverlay .kingSuitCards{display:flex; flex-wrap:wrap; gap:var(--kingGap);}
+#kingOverlay .kingHint{ color: rgba(229,231,235,.92); font-size: 12px; line-height: 1.3; margin-top:4px; }
+#kingOverlay .kingReq{ color: rgba(229,231,235,.86); font-size: 11px; margin-top:4px; }
+#kingOverlay .kingErr{ color: rgba(239,68,68,.95); font-size: 11px; margin-top:6px; min-height: 14px;}
+.miniCard{ width: var(--kingMiniW); height: var(--kingMiniH); border-radius: 12px; border:1px solid rgba(255,255,255,.14); box-shadow: 0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; position:relative; user-select:none; cursor:pointer; background: linear-gradient(180deg, #1f2937, #111827); }
+.miniCard .big{ font-size: clamp(14px, calc(var(--kingMiniW) * 0.31), 20px); font-weight: 720; line-height: 1.0; }
+.miniCard .small{ position:absolute; top:4px; left:50%; transform: translateX(-50%); font-size: clamp(8px, calc(var(--kingMiniW) * 0.14), 10px); font-weight: 650; letter-spacing:.4px; color: rgba(255,255,255,.92); background: rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 1px 3px; text-transform: uppercase; }
+.miniCard.finalChoice{ width: calc(var(--kingMiniW) * 0.88); height: calc(var(--kingMiniH) * 0.88); }
+.miniCard.finalChoice .big{ font-size: clamp(13px, calc(var(--kingMiniW) * 0.29), 18px); }
+.miniCard.finalChoice .small{ font-size: clamp(7px, calc(var(--kingMiniW) * 0.13), 9px); }
+.kingActions{display:flex; gap:10px; justify-content:flex-end; margin-top:auto; padding-top:8px;}
+.miniCard.selected{ box-shadow:0 0 0 4px rgba(145, 126, 185, 0.95), 0 0 0 7px rgb(145, 126, 185, 0.45), 0 18px 34px rgba(0,0,0,.55); }
+.miniCard.disabled{ opacity:.35; cursor:not-allowed; filter: grayscale(.15) brightness(.92); }
+.miniCard.suitC{ background: linear-gradient(180deg, rgba(34,197,94,.95), rgba(34,197,94,.55)); border-color: rgba(34,197,94,.90); }
+.miniCard.suitS{ background: linear-gradient(180deg, rgba(239,68,68,.95), rgba(239,68,68,.55)); border-color: rgba(239,68,68,.90); }
+.miniCard.suitD{ background: linear-gradient(180deg, rgba(56,189,248,.95), rgba(56,189,248,.55)); border-color: rgba(56,189,248,.90); }
+.miniCard.suitH{ background: linear-gradient(180deg, rgba(250,204,21,.95), rgba(250,204,21,.55)); border-color: rgba(250,204,21,.90); }
+
+
+
+
+/* =========================================================
+   Mobile single-screen layout (no vertical scroll, no horizontal swipe)
+   - CSS/HTML only: JS unchanged
+   - Goal: tableau + Human/AI values fully visible in one viewport on compact Android
+   ========================================================= */
+
+@media (max-width: 980px){
+  :root{ --asideH: clamp(260px, 52dvh, 460px); }
+
+  main{ padding: 8px; }
+
+  .grid{
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, var(--asideH));
+    gap: 8px;
+  }
+
+  /* No internal scrolling on mobile panels */
+  .panel .bd{ overflow: hidden; padding: 6px; }
+
+  /* Side panel: fill its grid track (no fixed pixel clamp that forces scrollbars) */
+  .grid > aside.panel{ height: 100%; min-height: 0; max-height: none; }
+
+  /* Tighten headers to reclaim vertical space */
+  .panel .hd{ padding: 8px 10px; }
+  .pill{ font-size: 11px; padding: 3px 7px; }
+
+  /* Compact the Human/AI boxes */
+  .kv{ gap: 6px; }
+  .box{ padding: 6px; border-radius: 12px; }
+  .box h3{ margin: 0 0 4px; font-size: 11px; }
+  .cardsList{ margin-top: 6px; gap: 4px; }
+
+  .suitRows{ gap: 4px; margin-top: 6px; }
+
+  /* Make each suit row stable (no row-level wrapping that causes overflow or swipe) */
+  .suitRow{
+    display: grid;
+    grid-template-columns: max-content max-content max-content 1fr;
+    column-gap: 4px;
+    row-gap: 2px;
+    align-items: center;
+  }
+  .suitLabel{ min-width: 0; font-size: 10px; white-space: nowrap; }
+  .suitMeta{ font-size: 10px; }
+  .suitSep{ margin: 0 2px; font-size: 10px; }
+
+  /* Values always occupy the flexible last column */
+  .suitValues{
+    grid-column: 4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  /* Chips become dense "tokens" (less padding/border => fewer wraps => less height) */
+  .chip{
+    font-size: 10px;
+    padding: 0 3px;
+    line-height: 16px;
+    border-radius: 8px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  /* Reclaim a bit inside the tableau panel too */
+  .tableauPanel .bd{ padding: 6px; }
+  .tableau{ padding: 2px 0 0; }
+}
+
+@media (max-width: 980px) and (max-height: 740px){
+  .panel .hd{ padding: 7px 9px; }
+  .panel .bd{ padding: 5px; }
+  .pill{ font-size: 10px; padding: 2px 6px; }
+
+  .box{ padding: 5px; }
+  .box h3{ font-size: 10px; margin-bottom: 3px; }
+
+  .suitLabel, .suitMeta, .suitSep{ font-size: 9px; }
+  .chip{ font-size: 9px; line-height: 15px; padding: 0 2px; max-width: 100%; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 700px), (max-height: 740px){
+  #kingOverlay{ --kingMiniW:52px; --kingMiniH:72px; --kingGap:5px; }
+  #kingOverlay .panelBox{ padding: 8px; }
+  #kingOverlay .miniGrid{ margin-top: 6px; }
+  #kingOverlay .kingSuitGroup{ margin-top: 8px; }
+  #kingOverlay .kingHint{ font-size: 11px; }
+  #kingOverlay .kingReq, #kingOverlay .kingErr{ font-size: 10px; }
+}
+
+@media (max-height: 640px){
+  #kingOverlay{ --kingMiniW:46px; --kingMiniH:64px; --kingGap:4px; }
+  #kingOverlay .panelBox{ padding: 7px; }
+  #kingOverlay .kingHint{ font-size: 10px; margin-top: 3px; }
+  #kingOverlay .kingReq{ margin-top: 2px; }
+  #kingOverlay .kingErr{ margin-top: 4px; min-height: 12px; }
+  .kingActions{ padding-top: 6px; }
+}
+
+
+/* === Mobile fit tweak: keep tableau minimal + compact compare box === */
+@media (max-width: 980px){
+  .grid{
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: stretch;
+  }
+  .tableauPanel .hd{ padding: 6px 8px; }
+  .tableauPanel .bd{ padding: 4px 6px; }
+
+  .compareWrap{
+    margin-top: 0;
+    padding: 5px;
+    border-radius: 10px;
+  }
+  .compareTable{ border-spacing: 0 4px; }
+  .compareTable th{ font-size: 10px; padding: 0 4px 2px; }
+  .compareTable th:first-child{ width: 92px; }
+  .compareTable td{ padding: 0 4px; }
+  .catCell{ font-size: 10px; padding: 5px 6px; border-left-width: 3px; }
+  .battleCell{ min-height: 40px; padding: 5px 6px; }
+  .battleHead{ margin-bottom: 3px; }
+  .battleValue{ font-size: 13px; }
+  .suitValues{ gap: 3px; }
+}
+
+/* === Mobile layout: prioritize tableau height so cards can scale up === */
+@media (max-width: 980px){
+  .grid{
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    height: 100%;
+    min-height: 0;
+    align-content: stretch;
+  }
+  .grid > .tableauPanel{
+    min-height: 0;
+    align-self: start;
+  }
+  .grid > aside.panel{
+    min-height: 170px;
+    align-self: end;
+    overflow: hidden;
+  }
+  .tableauPanel .bd,
+  .tableauPanel .tableau{
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+}
+
+
+
+/* === Final responsive layout contract (desktop + mobile) === */
+.grid{
+  display:grid !important;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap:10px;
+  height:100%;
+  min-height:0;
+  align-items:stretch;
+}
+
+.grid > .tableauPanel,
+.grid > aside.panel{
+  min-width:0;
+  min-height:0;
+  width:100%;
+}
+
+.grid > .tableauPanel .bd,
+.grid > aside.panel .bd{
+  overflow:hidden;
+}
+
+/* Keep the taken-cards area compact so all suit rows remain visible without scroll */
+.compareWrap{ padding:6px; }
+.compareTable{ border-spacing:0 4px; }
+.compareTable th{ font-size:11px; padding:0 6px 2px; }
+.compareTable th:first-child{ width:94px; }
+.compareTable td{ padding:0 6px; }
+.catCell{ font-size:10px; padding:5px 6px; border-left-width:3px; }
+.battleCell{ min-height:38px; padding:5px 6px; }
+.battleHead{ margin-bottom:3px; }
+.battleValue{ font-size:13px; }
+.suitMeta{ font-size:10px; }
+.suitValues{ gap:3px; }
+.chip{ font-size:10px; line-height:15px; padding:0 3px; }
+
+/* Log is secondary to gameplay and taken-cards visibility */
+#logBox{ display:none; }
+.logInline{ display:none; }
+
+@media (max-width: 980px){
+  .grid{
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, .72fr);
+    gap:8px;
+  }
+
+  .grid > .tableauPanel{ order:1; }
+  .grid > aside.panel{ order:2; }
+
+  .panel .hd{ padding:8px 10px; }
+  .panel .bd{ padding:6px; }
+
+  .compareTable th:first-child{ width:82px; }
+  .catCell{ font-size:9px; padding:4px 5px; }
+  .battleCell{ min-height:34px; padding:4px 5px; }
+  .battleValue{ font-size:12px; }
+  .suitMeta, .suitLabel, .suitSep{ font-size:9px; }
+  .chip{ font-size:9px; line-height:14px; padding:0 2px; }
+}
+
+@media (max-width: 420px), (max-height: 760px){
+  .grid{ grid-template-rows: minmax(0, 1fr) minmax(0, .78fr); }
+  .panel .hd{ padding:7px 9px; }
+  .panel .bd{ padding:5px; }
+  .compareTable th{ font-size:10px; }
+  .battleValue{ font-size:11px; }
+  .chip{ font-size:8.5px; line-height:13px; }
+}
+
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div>
+      <h1>Mirus – Human vs AI (Monte Carlo “fair”)</h1>
+      <div class="status" id="statusLine"></div>
+    </div>
+    <div class="controls">
+      <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--muted);">
+        AI
+        <select id="aiLevel">
+          <option value="random">Random</option>
+          <option value="greedy">Greedy</option>
+          <option value="mc" selected>MonteCarlo</option>
+        </select>
+      </label>
+      <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--muted);">
+        Start
+        <select id="whoStarts">
+          <option value="human" selected>Human</option>
+          <option value="ai">AI</option>
+        </select>
+      </label>
+      <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--muted);">
+        Debug indices
+        <input type="checkbox" id="debugIdx" />
+      </label>
+      <button class="primary" id="newGameBtn">New game</button>
+      <button id="leaderBtn">Use Leader</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="panel tableauPanel">
+      <div class="hd">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span class="pill" id="agePill">Age</span>
+          <span class="pill" id="turnPill">Turn</span>
+          <span class="pill" id="actionPill">Picks</span>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="tableau" id="tableau"></div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="hd">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span class="pill ok">Human</span>
+          <span class="pill warn">AI</span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="logOpenBtn" class="ghost" title="Open the log">Log</button>
+          <button class="primary" id="leaderBtnSide" title="Use the Leader">Leader</button>
+          <div class="pill" id="scorePill">Score: –</div>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="box compareWrap">
+          <table class="compareTable">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Human Cards</th>
+                <th>AI Cards</th>
+              </tr>
+            </thead>
+            <tbody id="compareBody"></tbody>
+          </table>
+        </div>
+        <div class="hr logInline"></div>
+        <div class="box" id="logBox">
+          <div class="logHead">
+            <h3 style="margin:0;">Log</h3>
+            <button id="logCloseBtn" class="ghost" title="Close log">Close</button>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<div id="modalOverlay" style="display:none; position:fixed; inset:0; background: rgba(0,0,0,.36); z-index: 999; align-items:start; justify-content:center; padding: 12px;">
+  <div style="max-width: 420px; width:100%; background: rgba(17,24,39,.78); border:1px solid rgba(255,255,255,.16); border-radius: 14px; box-shadow: 0 22px 60px rgba(0,0,0,.65); padding: 12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
+      <div style="font-weight:700; letter-spacing:.15px; font-size: 13.5px;">Transition to the Modern Age</div>
+      <div class="pill" style="border-color: rgba(56,189,248,.35); color: rgba(56,189,248,.95); font-size:12px;">One-time choice</div>
+    </div>
+    <div style="color: rgba(229,231,235,.92); font-size: 12.75px; line-height: 1.35;">
+      <b>Modern Age:</b> you would start <b>second</b>. Discard your <b>Leader</b> to take the <b>first turn</b>?
+      <div class="note" style="margin-top:6px;">Turn order only (no “2 picks” bonus).</div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px;">
+      <button id="modalNoBtn" style="padding: 7px 9px; min-height: 32px;">No</button>
+      <button class="primary" id="modalYesBtn" style="padding: 7px 9px; min-height: 32px;">Yes, discard the Leader</button>
+    </div>
+  </div>
+</div>
+
+
+
+<div id="kingOverlay">
+  <div class="panelBox">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
+      <div>
+        <div id="kingTitle" style="font-weight:750; letter-spacing:.15px; font-size: 14.5px;">King Wonder</div>
+        <div id="kingMsg" class="kingHint"></div>
+        <div id="kingReq" class="kingReq"></div>
+      </div>
+      <div class="pill" style="border-color: rgba(56,189,248,.35); color: rgba(56,189,248,.95); font-size:12px;">Required</div>
+    </div>
+
+    <div id="kingCardsGrid" class="miniGrid"></div>
+    <div id="kingErr" class="kingErr"></div>
+
+    <div class="kingActions" style="justify-content:flex-start; gap:8px; margin-bottom:8px;">
+      <button id="kingDeltaMinusTwoBtn" title="Set modifier to -2">-2</button>
+      <button id="kingDeltaMinusBtn" title="Set modifier to -1">-1</button>
+      <button id="kingDeltaBaseBtn" title="Set modifier to 0">0</button>
+      <button id="kingDeltaPlusBtn" title="Set modifier to +1">+1</button>
+      <button id="kingDeltaPlusTwoBtn" title="Set modifier to +2">+2</button>
+    </div>
+
+    <div class="kingActions">
+      <button class="primary" id="kingConfirmBtn" disabled>Confirm</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="logBackdrop" style="display:none; position:fixed; inset:0; background: rgba(0,0,0,.65); z-index: 65;"></div>
+
+<div id="endOverlay" style="display:none; position:fixed; inset:0; background: rgba(0,0,0,.62); z-index: 70; align-items:center; justify-content:center; padding: 18px;">
+  <div style="max-width: 720px; width:100%; background: rgba(17,24,39,.50); border:1px solid rgba(255,255,255,.14); border-radius: 18px; box-shadow: 0 22px 60px rgba(0,0,0,.60); padding: 14px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;">
+      <div>
+        <div style="font-weight:750; letter-spacing:.2px; font-size: 15px;">Game over</div>
+        <div id="endWinnerLine" style="color: rgba(255,255,255,.96); font-size: 16px; font-weight:750; margin-top:4px;">—</div>
+        <div id="endScoreLine" style="color: rgba(229,231,235,.86); font-size: 13px; margin-top:2px;">—</div>
+      </div>
+      <button id="endCloseBtn" aria-label="Close results">Close</button>
+    </div>
+
+    <div id="endBody" style="color: rgba(229,231,235,.92); font-size: 13px; line-height: 1.35;"></div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+      <button class="primary" id="endNewBtn">New game</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+/* ============================================================
+   0) EXPERIMENT CONSTANTS (AI performance / quality)
+   ============================================================ */
+
+// As requested: you can change these values and experiment.
+const MC_PLAYOUT = "greedy";      // "greedy" or "random"
+const JOKER_SWAP_GRANTS_DOUBLE = false; // Modern start: using the Joker to become first also grants 2 picks? (default: no)
+
+// Adaptive Monte Carlo budget: very light at the very start (snappier AI response),
+// then increases progressively while the age advances.
+const MC_ADAPTIVE_OPENING_TURNS = 2;
+const MC_ADAPTIVE_EARLY_TURNS = 6;
+const MC_SIMS_OPENING = 96;
+const MC_SIMS_EARLY = 220;
+const MC_SIMS_LATE = 420;
+const AI_MOVE_MAX_MS = 2000;
+const MC_FALLBACK_MIN_REMAINING_MS = 1;
+const MC_ROOT_PRUNE_MARGIN = 2.4;
+const MC_ROOT_MIN_KEEP = 2;
+const MC_ROOT_KEEP_FRACTION = 0.75;
+const MC_UCB_EXPLORATION = 1.2;
+const MC_UCB_PRIOR_BONUS = 0.45;
+const MC_ROLLOUT_MAX_PLIES = 90;
+const MC_BOOTSTRAP_WEIGHT = 0.60;
+const MC_ROLLOUT_EPSILON_START = 0.06;
+const MC_ROLLOUT_EPSILON_END = 0.015;
+const AI_CANDIDATE_K_OPENING = 8;
+const AI_CANDIDATE_K_MID = 6;
+const AI_CANDIDATE_K_LATE = 4;
+
+/* ============================================================
+   1) TABLEAU STRUCTURE (Mirus 2.0)
+   ============================================================
+
+   We separate UI from logic:
+   - layout.rows: how to draw the tableau (rows, visual order).
+   - layout.blockers[i]: list of indices that COVER slot i. Slot i is accessible if ALL blockers are removed.
+   - layout.facePattern[i]: "F" face-up, "B" face-down.
+
+   Ancient tableau (20): 2–3–4–5–6 with alternating F/B rows (as in the rules diagram).
+   Modern tableau  (24): 2–4–5–6–7 with alternating F/B rows (as in the rules diagram).
+*/
+
+function buildRows(rowLens){
+  let idx = 0;
+  const rows = [];
+  for (const len of rowLens){
+    const r = [];
+    for (let i=0;i<len;i++) r.push(idx++);
+    rows.push(r);
+  }
+  return rows;
+}
+
+function buildBlockers(rows){
+  const total = rows.reduce((a,r)=>a+r.length,0);
+  const blockers = Array.from({length:total}, ()=>[]);
+
+  for (let ri=0; ri<rows.length-1; ri++){
+    const upper = rows[ri];
+    const lower = rows[ri+1];
+    const u = upper.length;
+    const l = lower.length;
+
+    for (let lj=0; lj<l; lj++){
+      const lowerIdx = lower[lj];
+      let upperCols;
+
+      // Standard pyramid step: each upper card covers two adjacent lower cards.
+      if (u === l - 1){
+        upperCols = [lj-1, lj];
+      }
+      // Special Modern top step (2 -> 4): each upper covers a pair of cards.
+      else if (u === 2 && l === 4){
+        upperCols = [Math.floor(lj/2)];
+      }
+      // Fallback (should not be reached with the current official layouts).
+      else {
+        const ratio = l / u;
+        upperCols = [Math.min(u-1, Math.floor(lj / ratio))];
+      }
+
+      for (const uc of upperCols){
+        if (uc>=0 && uc<u) blockers[lowerIdx].push(upper[uc]);
+      }
+    }
+  }
+  return blockers;
+}
+
+function buildFacePattern(rows){
+  const total = rows.reduce((a,r)=>a+r.length,0);
+  const pat = Array(total);
+  for (let ri=0; ri<rows.length; ri++){
+    const faceDown = (ri % 2 === 1); // 2nd, 4th, ... rows are face-down
+    for (const idx of rows[ri]) pat[idx] = faceDown ? "B" : "F";
+  }
+  return pat;
+}
+
+const LAYOUTS = (()=>{
+  const ancientRows = buildRows([2,3,4,5,6]);
+  const modernRows  = buildRows([2,4,5,6,7]);
+
+  function rowMultipliersFor(rows){
+    // Align the 2-card top row between the cards of the row below (3 in Ancient, 4 in Modern).
+    const belowLen = rows[1].length;
+    const top = [0.5, belowLen - 1.5];
+    return [top].concat(Array(rows.length-1).fill(null));
+  }
+
+  const ancient = {
+    rows: ancientRows,
+    rowColMultipliers: rowMultipliersFor(ancientRows),
+    blockers: buildBlockers(ancientRows),
+    facePattern: buildFacePattern(ancientRows)
+  };
+  const modern = {
+    rows: modernRows,
+    rowColMultipliers: rowMultipliersFor(modernRows),
+    blockers: buildBlockers(modernRows),
+    facePattern: buildFacePattern(modernRows)
+  };
+  return {ancient, modern};
+})();
+
+function layoutForAge(age){
+  return (age === "modern") ? LAYOUTS.modern : LAYOUTS.ancient;
+}
+
+
+// ============================================================
+// 1.b) GEOMETRIA TABLEAU (dipende da CSS vars, quindi va ricalcolata)
+// ============================================================
+
+function _cssNum(varName, fallback){
+  const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getTableauMetrics(){
+  // Questi sono aggiornati da fitTableau()
+  const cardW = _cssNum("--cardW", 72);
+  const cardH = _cssNum("--cardH", 96);
+  const colGap = _cssNum("--colGap", 10);
+  const rowStepRatio = _cssNum("--rowStepRatio", 0.72);
+
+  // Overlap SOLO verticale: passo X >= cardW (nessun overlap), passo Y < cardH (leggero overlap)
+  const stepX = cardW + colGap;
+  const stepY = cardH * rowStepRatio;
+
+  return { cardW, cardH, stepX, stepY };
+}
+
+function computeTableauGeometry(metrics, layout){
+  const { cardW, cardH, stepX, stepY } = metrics;
+
+  let maxW = 0;
+
+  const rows = layout.rows;
+  const rowMuls = layout.rowColMultipliers;
+
+  const rowW = rows.map((r, ri) => {
+    const muls = rowMuls?.[ri];
+    const minMul = muls ? Math.min(...muls) : 0;
+    const maxMul = muls ? Math.max(...muls) : (r.length - 1);
+
+    const w = cardW + Math.max(0, (maxMul - minMul)) * stepX;
+    maxW = Math.max(maxW, w);
+    return w;
+  });
+
+  const pos = Array(layout.blockers.length);
+
+  for (let ri = 0; ri < rows.length; ri++){
+    const row = rows[ri];
+    const muls = rowMuls?.[ri];
+    const minMul = muls ? Math.min(...muls) : 0;
+
+    const baseX = Math.round((maxW - rowW[ri]) / 2);
+    const startX = Math.round(baseX);
+
+    const y = Math.round(ri * stepY);
+
+    for (let ci = 0; ci < row.length; ci++){
+      const idx = row[ci];
+      const m = muls ? muls[ci] : ci; // <— qui la magia
+      pos[idx] = { x: startX + (m - minMul) * stepX, y, row: ri, col: ci };
+    }
+  }
+
+  let maxRight = 0;
+  for (const p of pos){
+    if (!p) continue;
+    maxRight = Math.max(maxRight, p.x + cardW);
+  }
+  const width = Math.max(maxW, Math.ceil(maxRight));
+  const height = cardH + Math.max(0, rows.length - 1) * stepY;
+  return { pos, width, height };
+}
+
+/* ============================================================
+   2) MODELLO CARTE E SCORING (logica pura)
+   ============================================================ */
+
+const SUITS = ["S","D","H","C"];
+const SUIT_ICON = {S:"♠", D:"♦", H:"♥", C:"♣"};
+const SUIT_NAME = {S:"Military", D:"Culture", H:"Technology", C:"Food"};
+// Card-face short labels (4 letters, uppercase) for better readability on small cards.
+const SUIT_ABBR = {S:"MILI", D:"CULT", H:"TECH", C:"FOOD"};
+
+function randInt(n){ return Math.floor(Math.random() * n); }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=randInt(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function makeAgeDeck(age){
+  const deck = [];
+  const from = (age==="ancient") ? 1 : 6;
+  const to   = (age==="ancient") ? 5 : 10;
+  for(let v=from; v<=to; v++){
+    for(const s of SUITS){
+      deck.push({kind:"card", age, suit:s, value:v, id: `${age}_${s}_${v}`});
+    }
+  }
+  if (age === "modern"){
+    // Kings are Wonders. They are NOT part of any suit for sums/sequences,
+    // but we keep a suit purely for display (e.g., "K♥").
+    for (const s of SUITS){
+      deck.push({kind:"king", age, suit:s, value:13, id: `${age}_K_${s}`});
+    }
+  }
+  shuffle(deck);
+  return deck;
+}
+
+function effectiveCardValue(card, wonderMods){
+  if (!card || card.kind!=="card") return card ? card.value : 0;
+  if (!wonderMods) return card.value;
+  for (let p=0; p<2; p++){
+    const wm = wonderMods[p];
+    if (!wm) continue;
+    if (wm.cardId === card.id && typeof wm.delta === "number") return card.value + wm.delta;
+  }
+  return card.value;
+}
+
+function isValidWonderDeltaForCard(cards, cardId, delta, wonderMods=null){
+  if (!cardId) return false;
+  if (![-2,-1,0,1,2].includes(delta)) return false;
+  const selected = cards.find(c=>c && c.kind==="card" && c.id===cardId);
+  if (!selected) return false;
+  const finalValue = selected.value + delta;
+  if (finalValue < 1 || finalValue > 10) return false;
+  for (const c of cards){
+    if (!c || c.kind!=="card" || c.id===cardId) continue;
+    const v = effectiveCardValue(c, wonderMods);
+    if (c.suit===selected.suit && v===finalValue) return false;
+  }
+  return true;
+}
+
+function legalWonderDeltas(cards, cardId, wonderMods=null){
+  return [-2,-1,0,1,2].filter(delta => isValidWonderDeltaForCard(cards, cardId, delta, wonderMods));
+}
+
+function sumSuit(cards, suit, wonderMods=null){
+  let s=0;
+  for(const c of cards){
+    if (c.kind==="card" && c.suit===suit) s += effectiveCardValue(c, wonderMods);
+  }
+  return s;
+}
+function valuesSet(cards, suit, wonderMods=null){
+  const set = new Set();
+  for(const c of cards){
+    if (c.kind!=="card" || c.suit!==suit) continue;
+    const v = effectiveCardValue(c, wonderMods);
+    if (v>=1 && v<=10) set.add(v);
+  }
+  return set;
+}
+
+function valueLabel(v){
+  return (v===1) ? "A" : String(v);
+}
+function suitValues(cards, suit, wonderMods=null){
+  return cards
+    .filter(c => c && c.kind==="card" && c.suit===suit)
+    .map(c => effectiveCardValue(c, wonderMods))
+    .sort((a,b)=>a-b);
+}
+function countValue(cards, value){
+  let k=0; for(const c of cards){ if (c.kind==="card" && c.value===value) k++; } return k;
+}
+function hasAllFourOfValue(cards, value){
+  const suits = new Set();
+  for(const c of cards){ if (c.kind==="card" && c.value===value) suits.add(c.suit); }
+  return suits.size===4;
+}
+function countKingsInCards(cards){
+  let k = 0;
+  for (const c of cards){ if (c && c.kind === "king") k++; }
+  return k;
+}
+function wonderTieOwner(hCards, aCards, scoringOpts=null){
+  if (scoringOpts && scoringOpts.disableAllWonderTieBreaks) return null;
+
+  let hHasWonder = countKingsInCards(hCards) >= 3;
+  let aHasWonder = countKingsInCards(aCards) >= 3;
+
+  const disabled = scoringOpts && Array.isArray(scoringOpts.disableWonderForPlayer)
+    ? scoringOpts.disableWonderForPlayer
+    : null;
+  if (disabled?.[0]) hHasWonder = false;
+  if (disabled?.[1]) aHasWonder = false;
+
+  if (hHasWonder && !aHasWonder) return 0;
+  if (aHasWonder && !hHasWonder) return 1;
+  return null;
+}
+
+// Segmenti massimali di consecutivi su cerchio 1..10 (wrap 10->1).
+function circularRuns(values){
+  const present = Array(11).fill(false);
+  for(const v of values) present[v]=true;
+
+  const missing = [];
+  for(let v=1; v<=10; v++) if (!present[v]) missing.push(v);
+  if (missing.length===0) return [{len:10, maxCard:10, cards:[1,2,3,4,5,6,7,8,9,10]}];
+
+  const start = (missing[0] % 10) + 1;
+  const seq = [];
+  for(let i=0;i<10;i++){
+    const v = ((start + i - 1) % 10) + 1;
+    seq.push(present[v] ? v : 0);
+  }
+
+  const runs = [];
+  let cur = [];
+  for(const v of seq){
+    if (v!==0) cur.push(v);
+    else{
+      if (cur.length>0){
+        runs.push({len:cur.length, maxCard: Math.max(...cur), cards:cur.slice()});
+        cur=[];
+      }
+    }
+  }
+  if (cur.length>0) runs.push({len:cur.length, maxCard: Math.max(...cur), cards:cur.slice()});
+  return runs;
+}
+
+function bestDiamondStraight(cards, wonderMods=null){
+  const set = valuesSet(cards,"D", wonderMods);
+  const runs = circularRuns(set);
+  if (runs.length===0) return {len:0, maxCard:0, cards:[]};
+  // tie-break: same length => highest card in the straight wins (here interpreted as the max rank present)
+  runs.sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard));
+  return runs[0];
+}
+
+function runKey(run){
+  if (!run || !run.cards) return "";
+  return run.cards.join(",");
+}
+
+function diamondStraights(cards, wonderMods=null){
+  const set = valuesSet(cards,"D", wonderMods);
+  const runs = circularRuns(set).filter(r=>r.len>=2);
+  runs.sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard) || (runKey(b).localeCompare(runKey(a))));
+  return runs;
+}
+
+function topDiamondStraights(cards, k=2, wonderMods=null){
+  return diamondStraights(cards, wonderMods).slice(0,k);
+}
+function runText(run){
+  if (!run || !run.cards || run.cards.length===0) return "—";
+  return run.cards.map(valueLabel).join("-");
+}
+function cultureVP(cards){
+  // Legacy (per-player) culture scoring: +8 for best straight, +4 for second.
+  // Not used for final scoring anymore (Culture is now CONTESTED across players).
+  const runs = topDiamondStraights(cards, 2);
+  let vp = 0;
+  if (runs[0]) vp += 8;
+  if (runs[1]) vp += 4;
+  return {vp, runs};
+}
+
+function cultureContestVP(hCards, aCards, wonderMods=null, scoringOpts=null){
+  // Global, contested Culture (Mirus 2.0): compare the best ♦ straight of each player.
+  // +8 to the longer straight (len ≥ 2), +4 to the shorter straight (len ≥ 2).
+  // Tie-break: same length => higher max card wins.
+  // Exact tie: +8 shared (or assigned by Wonder tie-break if enabled).
+  const hRuns = diamondStraights(hCards, wonderMods);
+  const aRuns = diamondStraights(aCards, wonderMods);
+
+  const bestH = hRuns[0] || null;
+  const bestA = aRuns[0] || null;
+
+  let h = 0, a = 0;
+  let bestGroup = [];
+  let secondGroup = [];
+
+  if (!bestH && !bestA) return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  if (bestH && !bestA){
+    h += 8;
+    bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+    return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  }
+  if (!bestH && bestA){
+    a += 8;
+    bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+  }
+
+  const cmp = (bestH.len-bestA.len) || (bestH.maxCard-bestA.maxCard);
+  const tieOwner = wonderTieOwner(hCards, aCards, scoringOpts);
+
+  if (cmp>0){
+    h += 8;
+    a += 4;
+    bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+    secondGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+  } else if (cmp<0){
+    a += 8;
+    h += 4;
+    bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    secondGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+  } else if (tieOwner===0 || tieOwner===1){
+    if (tieOwner===0){
+      h += 8;
+      a += 4;
+      bestGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+      secondGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+    } else {
+      a += 8;
+      h += 4;
+      bestGroup = [{owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}];
+      secondGroup = [{owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`}];
+    }
+  } else {
+    h += 8;
+    a += 8;
+    bestGroup = [
+      {owner:0, run:bestH, key:`${bestH.len}|${bestH.maxCard}`},
+      {owner:1, run:bestA, key:`${bestA.len}|${bestA.maxCard}`}
+    ];
+  }
+
+  return {h, a, hRuns, aRuns, bestGroup, secondGroup};
+}
+
+function techPoints(cards, wonderMods=null){
+  const set = valuesSet(cards,"H", wonderMods);
+  const runs = circularRuns(set).filter(r=>r.len>=3);
+  let total = 0;
+  for (const r of runs) total += (2 * r.len);
+  return total;
+}
+function spadeShieldValue(v){
+  if (v<=3) return 1;
+  if (v<=6) return 2;
+  return 3;
+}
+function militaryShields(cards, wonderMods=null){
+  let total = 0;
+  for (const c of cards){
+    if (!c || c.kind!=="card" || c.suit!=="S") continue;
+    const v = effectiveCardValue(c, wonderMods);
+    total += spadeShieldValue(v);
+  }
+  return total;
+}
+function heartBreakthroughs(cards, wonderMods=null){
+  const set = valuesSet(cards, "H", wonderMods);
+  const pairs = [[1,2],[3,4],[5,6],[7,8],[9,10]];
+  let count = 0;
+  for (const [a,b] of pairs){
+    if (set.has(a) && set.has(b)) count++;
+  }
+  return count;
+}
+function foodPoints(cards, wonderMods=null){
+  return Math.floor(sumSuit(cards,"C", wonderMods)/5);
+}
+
+function ancientScoring(hAnc, aAnc){
+  let h=0, a=0;
+  if (hasAllFourOfValue(hAnc,5)) h-=3;
+  if (hasAllFourOfValue(aAnc,5)) a-=3;
+  return {human:h, ai:a, detail:{}};
+}
+
+function modernScoring(allH, allA, wonderMods=null, scoringOpts=null){
+  let h=0, a=0;
+  h += foodPoints(allH, wonderMods); a += foodPoints(allA, wonderMods);
+
+
+  const cult = cultureContestVP(allH, allA, wonderMods, scoringOpts);
+  h += cult.h;
+  a += cult.a;
+
+  if (hasAllFourOfValue(allH,10)) h-=6;
+  if (hasAllFourOfValue(allA,10)) a-=6;
+
+  return {human:h, ai:a, detail:{cult}};
+}
+
+function totalScoring(allH, allA, wonderMods=null, scoringOpts=null){
+  const hAnc = allH.filter(c=>c.age==="ancient");
+  const aAnc = allA.filter(c=>c.age==="ancient");
+  const anc = ancientScoring(hAnc, aAnc);
+  const mod = modernScoring(allH, allA, wonderMods, scoringOpts);
+  return {
+    human: anc.human + mod.human,
+    ai: anc.ai + mod.ai,
+    detail: {anc, mod}
+  };
+}
+
+/* ============================================================
+   3) ENGINE (state + rules) – without DOM, with private “secrets”
+   ============================================================ */
+
+const Engine = (() => {
+  // “Public” state: what UI and AI can read.
+  // “Secret” state: identity of face-down cards, accessible only to the engine.
+
+  function initTableau(age){
+    const layout = layoutForAge(age);
+    const deck = makeAgeDeck(age);
+    if (deck.length !== layout.blockers.length) throw new Error("Deck size mismatch.");
+
+    // Public slots: {removed, faceDown, card?} with `card` populated only if face-up.
+    const slotGeo = Array.from({length:deck.length}, ()=>({row:null,col:null}));
+    for (let row=0; row<layout.rows.length; row++){
+      const rowItems = layout.rows[row] || [];
+      for (let col=0; col<rowItems.length; col++){
+        const idx = rowItems[col];
+        if (idx>=0 && idx<slotGeo.length) slotGeo[idx] = {row, col};
+      }
+    }
+
+    const slots = Array.from({length:deck.length}, (_,i)=>({
+      idx:i,
+      row: slotGeo[i].row,
+      col: slotGeo[i].col,
+      removed:false,
+      faceDown: (layout.facePattern[i]==="B"),
+      card: null
+    }));
+
+    // Secrets: the true identity of each slot (always known to the engine).
+    const secret = deck.slice();
+
+    // Make face-up cards visible.
+    for(let i=0;i<deck.length;i++){
+      if (!slots[i].faceDown) slots[i].card = secret[i];
+    }
+
+    return {slots, secret};
+  }
+
+  function isAccessible(pub, idx){
+    if (pub.slots[idx].removed) return false;
+
+    // Bottom-up accessibility: a card is accessible only if all cards it covers are removed.
+    const blockers = layoutForAge(pub.age).blockers;
+    for(let j=0;j<pub.slots.length;j++){
+      if (pub.slots[j].removed) continue;
+      const bl = blockers[j] || [];
+      for(let k=0;k<bl.length;k++){
+        if (bl[k] === idx) return false;
+      }
+    }
+    return true;
+  }
+
+  function revealAccessible(pub, secret){
+    let flipped = 0;
+    for(let i=0;i<pub.slots.length;i++){
+      const s = pub.slots[i];
+      if (s.removed) continue;
+      if (s.faceDown && isAccessible(pub, i)){
+        s.faceDown = false;
+        s.card = secret[i];
+        flipped++;
+      }
+    }
+    return flipped;
+  }
+
+  function newGame(startingPlayer){
+    const {slots, secret} = initTableau("ancient");
+    const pub = {
+      age: "ancient",
+      currentPlayer: (startingPlayer==="human") ? 0 : 1,
+      ancientSecondPlayer: (startingPlayer==="human") ? 1 : 0,
+      picksLeftThisTurn: 1,
+      jokerUsed: [false,false],
+      modernSwapStillAvailable: false, // settato quando si entra in modern
+      kingWonder: null, // active while resolving Wonder final choice (card + delta)
+      wonderMark: [
+        { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false },
+        { cardId:null, cardBaseValue:null, pending:false, delta:0, finalChoicePending:false }
+      ],
+      slots,
+      taken: [[],[]],
+      score: {human:0, ai:0},
+      instantWin: null,
+      ended: false
+    };
+
+    revealAccessible(pub, secret);
+    return {pub, secret};
+  }
+
+  function canUseJokerDouble(pub, player){
+    return (!pub.kingWonder) && (!pub.jokerUsed[player]) && (pub.currentPlayer===player) && (pub.picksLeftThisTurn===1) && !pub.ended;
+  }
+
+  function useJokerDouble(state){
+    const {pub} = state;
+    const p = pub.currentPlayer;
+    if (!canUseJokerDouble(pub,p)) return {ok:false, msg:"Leader cannot be used right now."};
+    pub.jokerUsed[p] = true;
+    pub.picksLeftThisTurn = 2;
+    return {ok:true};
+  }
+
+  function canUseModernSwap(pub, player){
+    // Solo nel passaggio Ancient->Modern, prima di qualunque presa Modern; e solo per chi sarebbe il SECONDO nella Modern Age.
+    if (pub.kingWonder) return false;
+    if (pub.age !== "modern") return false;
+    if (!pub.modernSwapStillAvailable) return false;
+    if (pub.jokerUsed[player]) return false;
+
+    const modernFirst = pub.ancientSecondPlayer;
+    const modernSecond = 1 - modernFirst;
+    if (player !== modernSecond) return false;
+
+    const anyModernTaken = pub.taken[0].concat(pub.taken[1]).some(c=>c.age==="modern");
+    if (anyModernTaken) return false;
+
+    return true;
+  }
+
+  function useModernSwap(state, player){
+    const {pub} = state;
+    if (!canUseModernSwap(pub, player)) return {ok:false, msg:"Choice not available."};
+
+    pub.jokerUsed[player] = true;
+    pub.modernSwapStillAvailable = false;
+
+    // Beneficio: SOLO cambio dell'ordine. Nessuna doppia presa.
+    pub.currentPlayer = player;
+    pub.picksLeftThisTurn = 1;
+
+    return {ok:true};
+  }
+
+  function countKings(cards){
+    let k=0; for (const c of cards) if (c && c.kind==="king") k++;
+    return k;
+  }
+
+  function removeCardById(arr, id){
+    const i = arr.findIndex(c=>c && c.id===id);
+    if (i<0) return null;
+    return arr.splice(i,1)[0] || null;
+  }
+
+  function pickOfferCardsAI(nonKingCards, maxOffer, reqModern){
+    const modern = nonKingCards.filter(c=>c.age==="modern").slice().sort((a,b)=>a.value-b.value);
+    const ancient = nonKingCards.filter(c=>c.age==="ancient").slice().sort((a,b)=>a.value-b.value);
+    const offered = [];
+    // must include as many Modern as possible (reqModern)
+    for (let i=0;i<Math.min(reqModern, modern.length);i++) offered.push(modern[i]);
+    // fill with the lowest remaining
+    let iM = reqModern;
+    while (offered.length < maxOffer && iM < modern.length){ offered.push(modern[iM++]); }
+    let iA = 0;
+    while (offered.length < maxOffer && iA < ancient.length){ offered.push(ancient[iA++]); }
+    return offered.slice(0, maxOffer);
+  }
+
+  function pickBestFromOfferAI(offered){
+    // Simple heuristic aligned with final scoring weights (not perfect, but deterministic).
+    function wSuit(s){
+      if (s==="S") return 3.0;
+      if (s==="H") return 2.6;
+      if (s==="D") return 2.4;
+      if (s==="C") return 1.9;
+      return 1.0;
+    }
+    let best = offered[0], bestScore = -1e9;
+    for (const c of offered){
+      if (!c || c.kind!=="card") continue;
+      const score = c.value * wSuit(c.suit);
+      if (score > bestScore){ bestScore = score; best = c; }
+    }
+    return best;
+  }
+
+  function wonderModsFromState(pub){
+    return [0,1].map(p=>{
+      const wm = pub.wonderMark[p] || {};
+      return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+    });
+  }
+
+  function startKingWonder(state, builder){
+    const {pub} = state;
+    const ownCards = pub.taken[builder].filter(c=>c && c.kind==="card");
+    if (!ownCards.length) return {started:false};
+
+    pub.wonderMark[builder] = {
+      cardId: null,
+      cardBaseValue: null,
+      pending: true,
+      delta: 0,
+      finalChoicePending: true
+    };
+    return {started:true};
+  }
+
+  function checkImmediateVictory(pub, activePlayer){
+    const wonderMods = wonderModsFromState(pub);
+    const me = pub.taken[activePlayer];
+    const opp = pub.taken[1-activePlayer];
+
+    const myShields = militaryShields(me, wonderMods);
+    const oppShields = militaryShields(opp, wonderMods);
+    if ((myShields - oppShields) >= 10){
+      pub.ended = true;
+      pub.instantWin = {
+        player: activePlayer,
+        type: "military",
+        myShields,
+        oppShields,
+        delta: myShields - oppShields
+      };
+      return {triggered:true, type:"military", myShields, oppShields};
+    }
+
+    const breakthroughs = heartBreakthroughs(me, wonderMods);
+    if (breakthroughs >= 3){
+      pub.ended = true;
+      pub.instantWin = {
+        player: activePlayer,
+        type: "technology",
+        breakthroughs
+      };
+      return {triggered:true, type:"technology", breakthroughs};
+    }
+
+    return {triggered:false};
+  }
+
+  function finalizeAfterTake(state){
+    const {pub, secret} = state;
+    const flipped = revealAccessible(pub, secret);
+
+    if (pub.picksLeftThisTurn <= 0){
+      const activePlayer = pub.currentPlayer;
+      const iv = checkImmediateVictory(pub, activePlayer);
+      if (iv.triggered) return {ok:true, endedGame:true, immediateVictory:iv, flipped};
+    }
+
+    // End of age?
+    if (pub.slots.every(x=>x.removed)){
+      if (pub.age === "ancient"){
+        const hAnc = pub.taken[0].filter(c=>c.age==="ancient");
+        const aAnc = pub.taken[1].filter(c=>c.age==="ancient");
+        const sc = ancientScoring(hAnc, aAnc);
+        pub.score.human += sc.human;
+        pub.score.ai += sc.ai;
+
+        // Move to Modern
+        const next = initTableau("modern");
+        pub.age = "modern";
+        pub.slots = next.slots;
+        state.secret = next.secret;
+
+        pub.currentPlayer = pub.ancientSecondPlayer;
+        pub.picksLeftThisTurn = 1;
+        pub.modernSwapStillAvailable = true;
+
+        // No face-down cards are accessible at setup, but keep it consistent.
+        revealAccessible(pub, state.secret);
+
+        return {ok:true, endedAge:true, flipped};
+      } else {
+        const allH = pub.taken[0];
+        const allA = pub.taken[1];
+        const pendingFinal = [0,1].find(p=>{
+          const wm = pub.wonderMark[p];
+          return wm && wm.finalChoicePending;
+        });
+        if (typeof pendingFinal === "number"){
+          const eligibleIds = pub.taken[pendingFinal]
+            .filter(c=>c && c.kind==="card")
+            .map(c=>c.id);
+
+          if (!eligibleIds.length){
+            pub.wonderMark[pendingFinal].pending = false;
+            pub.wonderMark[pendingFinal].finalChoicePending = false;
+            pub.wonderMark[pendingFinal].delta = 0;
+          } else {
+          const eligibleDeltaByCardId = {};
+          for (const cardId of eligibleIds){
+            eligibleDeltaByCardId[cardId] = legalWonderDeltas(pub.taken[pendingFinal], cardId, wonderModsFromState(pub));
+          }
+          pub.kingWonder = {
+            phase: "finalChoice",
+            builder: pendingFinal,
+            eligibleIds,
+            eligibleDeltaByCardId,
+            pendingFinalize: true
+          };
+          return {ok:true, pendingKingWonder:true, flipped};
+          }
+        }
+
+        const sc = modernScoring(allH, allA, wonderModsFromState(pub));
+        pub.score.human += sc.human;
+        pub.score.ai += sc.ai;
+        pub.ended = true;
+        return {ok:true, endedGame:true, flipped};
+      }
+    }
+
+    // End of turn
+    if (pub.picksLeftThisTurn <= 0){
+      pub.picksLeftThisTurn = 1;
+      pub.currentPlayer = 1 - pub.currentPlayer;
+    }
+
+    // Disable the Modern swap after the first Modern pick (if not already)
+    if (pub.age==="modern" && pub.modernSwapStillAvailable){
+      const anyModernTaken = pub.taken[0].concat(pub.taken[1]).some(c=>c.age==="modern");
+      if (anyModernTaken) pub.modernSwapStillAvailable = false;
+    }
+
+    return {ok:true, flipped};
+  }
+
+  function chooseKingWonder(state, chosen, _internal=false){
+    const {pub} = state;
+    const kw = pub.kingWonder;
+    if (!kw || kw.phase !== "finalChoice") return {ok:false, msg:"No Wonder final choice is pending."};
+    if (pub.ended) return {ok:false, msg:"Game over."};
+    const builder = kw.builder;
+    const wm = pub.wonderMark[builder];
+    const fallbackCardId = wm && wm.cardId;
+
+    const chosenCardId = (chosen && typeof chosen === "object") ? chosen.cardId : fallbackCardId;
+    const deltaRaw = (chosen && typeof chosen === "object") ? chosen.delta : chosen;
+    const delta = Number(deltaRaw);
+
+    const eligible = new Set(Array.isArray(kw.eligibleIds) ? kw.eligibleIds : []);
+    if (!chosenCardId || !eligible.has(chosenCardId)) return {ok:false, msg:"Invalid final card choice."};
+    if (![-2,-1,0,1,2].includes(delta)) return {ok:false, msg:"Invalid final value choice."};
+    if (!wm) return {ok:false, msg:"Missing Wonder state."};
+
+    const marked = pub.taken[builder].find(c=>c && c.kind==="card" && c.id===chosenCardId);
+    if (!marked) return {ok:false, msg:"Missing selected card."};
+
+    if (!isValidWonderDeltaForCard(pub.taken[builder], marked.id, delta, wonderModsFromState(pub))){
+      return {ok:false, msg:"Illegal final value: out of range or duplicate suit/value."};
+    }
+
+    wm.cardId = marked.id;
+    wm.cardBaseValue = marked.value;
+    wm.pending = false;
+    wm.delta = delta;
+    wm.finalChoicePending = false;
+    pub.kingWonder = null;
+    const allH = pub.taken[0];
+    const allA = pub.taken[1];
+    const sc = modernScoring(allH, allA, wonderModsFromState(pub));
+    pub.score.human += sc.human;
+    pub.score.ai += sc.ai;
+    pub.ended = true;
+    const res = {ok:true, endedGame:true, flipped:0};
+    res.kingWonderDelta = delta;
+    res.kingWonderCardId = marked.id;
+    res._internal = _internal;
+    return res;
+  }
+
+
+  function autoResolveKingWonder(state){
+    const {pub} = state;
+    const kw = pub.kingWonder;
+    if (!kw) return finalizeAfterTake(state);
+
+    if (kw.phase === "finalChoice"){
+      const eligibleIds = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
+      if (!eligibleIds.length){
+        pub.kingWonder = null;
+        return finalizeAfterTake(state);
+      }
+      const scores = [];
+      for (const cardId of eligibleIds){
+        const tmp = (typeof structuredClone === "function") ? structuredClone(pub) : JSON.parse(JSON.stringify(pub));
+        const deltas = legalWonderDeltas(tmp.taken[kw.builder], cardId, wonderModsFromState(tmp));
+        for (const delta of deltas){
+          tmp.wonderMark[kw.builder].cardId = cardId;
+          tmp.wonderMark[kw.builder].delta = delta;
+          const t = totalScoring(tmp.taken[0], tmp.taken[1], wonderModsFromState(tmp));
+          scores.push({cardId, delta, val: t.ai - t.human});
+        }
+      }
+      if (!scores.length){
+        pub.kingWonder = null;
+        return finalizeAfterTake(state);
+      }
+      scores.sort((a,b)=>b.val-a.val || b.delta-a.delta || String(a.cardId).localeCompare(String(b.cardId)));
+      return chooseKingWonder(state, {cardId: scores[0].cardId, delta: scores[0].delta}, true);
+    }
+
+    return finalizeAfterTake(state);
+  }
+
+  function take(state, idx){
+    const {pub, secret} = state;
+    if (pub.ended) return {ok:false, msg:"Game over."};
+    if (pub.kingWonder) return {ok:false, msg:"Resolve the King Wonder first."};
+    const s = pub.slots[idx];
+    if (s.removed) return {ok:false, msg:"Already removed."};
+    if (s.faceDown) return {ok:false, msg:"Face-down card (it should reveal itself when it becomes accessible)."};
+    if (!isAccessible(pub, idx)) return {ok:false, msg:"Not accessible."};
+
+    const p = pub.currentPlayer;
+    const beforeKings = countKings(pub.taken[p]);
+
+    s.removed = true;
+    pub.taken[p].push(s.card);
+    pub.picksLeftThisTurn -= 1;
+
+    // King Wonder: after taking your 3rd King, defer card+modifier choice to end of Modern Age.
+    if (pub.age === "modern" && s.card && s.card.kind==="king"){
+      const afterKings = beforeKings + 1;
+      if (afterKings === 3){
+        startKingWonder(state, p);
+      }
+    }
+
+    return finalizeAfterTake(state);
+  }
+
+  function getPublicView(state){
+    // Copia shallow sicura: AI e UI non devono ottenere reference ai segreti.
+    // Note: for simplicity, we return a deep copy via structuredClone if available.
+    if (typeof structuredClone === "function") return structuredClone(state.pub);
+    return JSON.parse(JSON.stringify(state.pub));
+  }
+
+  function unknownPoolForAI(publicView){
+    // “Fair”: unknown pool = current-age deck minus seen/taken cards.
+    const age = publicView.age;
+    // the unknown pool also includes face-down cards in the current age (which the AI cannot see)
+    const deck = makeAgeDeck(age).map(c=>c.id); // shuffle irrilevante qui
+    const known = new Set();
+
+    for(const sl of publicView.slots){
+      if (sl.removed && sl.card) known.add(sl.card.id);
+      if (!sl.removed && !sl.faceDown && sl.card) known.add(sl.card.id);
+    }
+    for(const c of publicView.taken[0]) if (c.age===age) known.add(c.id);
+    for(const c of publicView.taken[1]) if (c.age===age) known.add(c.id);
+
+    const remaining = deck.filter(id => !known.has(id));
+    return remaining;
+  }
+
+  return {
+    newGame, take,
+    useJokerDouble, canUseJokerDouble,
+    useModernSwap, canUseModernSwap,
+    chooseKingWonder,
+    isAccessible,
+    getPublicView, unknownPoolForAI
+  };
+})();
+
+/* ============================================================
+   4) AI (uses ONLY public view + unknown pool)
+   ============================================================ */
+
+function quickEval(publicView, perspective){
+  // Quick heuristic for greedy/rollout: potential difference on suits/straight.
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+
+  const wS = (publicView.age==="ancient") ? 1.3 : 1.5;
+  const wC = 0.25, wD = 1.2, wH = 2.6;
+
+  const dS = (militaryShields(me) - militaryShields(opp)) * wS;
+  const dC = (sumSuit(me,"C") - sumSuit(opp,"C")) * wC;
+  const cult = cultureContestVP(me, opp);
+  const dD = (cult.h - cult.a) * wD;
+  const dH = (heartBreakthroughs(me) - heartBreakthroughs(opp)) * wH;
+
+  const pen = 0.6 * (Math.max(0, countValue(me,5)-2) + Math.max(0, countValue(me,10)-2));
+  return dS + dC + dD + dH - pen;
+}
+
+function enumerateMoves(publicView, player){
+  if (publicView.kingWonder){
+    const kw = publicView.kingWonder;
+    if (kw.builder !== player) return [{type:"pass"}];
+    if (kw.phase === "finalChoice"){
+      const ids = Array.isArray(kw.eligibleIds) ? kw.eligibleIds : [];
+      if (!ids.length) return [{type:"pass"}];
+      const moves = [];
+      for (const id of ids){
+        const legal = kw.eligibleDeltaByCardId?.[id];
+        const deltas = (Array.isArray(legal) && legal.length) ? legal : [-2,-1,0,1,2];
+        for (const delta of deltas) moves.push({type:"kingFinal", cardId:id, delta});
+      }
+      return moves;
+    }
+    return [{type:"pass"}];
+  }
+
+  const moves = [];
+  // Modern-start swap (only if the player is eligible)
+  if (Engine.canUseModernSwap(publicView, player)) moves.push({type:"modernSwap"});
+
+  // Joker double
+  if (Engine.canUseJokerDouble(publicView, player)) moves.push({type:"leader"});
+
+  // Take
+  for(let i=0;i<publicView.slots.length;i++){
+    const s = publicView.slots[i];
+    if (s.removed) continue;
+    if (s.faceDown) continue;
+    if (Engine.isAccessible(publicView, i)) moves.push({type:"take", idx:i});
+  }
+  if (moves.length===0) moves.push({type:"pass"});
+  return moves;
+}
+
+function aiChoose(state, options={}){
+  const startedAt = performance.now();
+  const report = (algo)=>{
+    if (typeof options.debugSink === "function"){
+      options.debugSink({
+        player: 1,
+        level: options.level || "mc",
+        algo,
+        elapsedMs: performance.now() - startedAt
+      });
+    }
+  };
+  const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
+  const level = options.level || document.getElementById("aiLevel")?.value || "mc";
+  const forcedKingFinal = chooseBestKingFinalBruteforce(state, 1);
+  if (forcedKingFinal){ report("kingFinal-bruteforce"); return forcedKingFinal; }
+  if (level==="random") { const mv = aiRandom(state); report("random"); return mv; }
+  if (level==="greedy") { const mv = aiGreedy(state); report("greedy"); return mv; }
+  if ((deadline - performance.now()) <= MC_FALLBACK_MIN_REMAINING_MS) { const mv = aiFastHeuristic(state); report("fast"); return mv; }
+  const mv = aiMonteCarlo(state, deadline);
+  report("mc");
+  return mv;
+}
+
+function mirrorStateForPlayerZero(state){
+  const mirrored = cloneEngineStateForSim(state);
+
+  mirrored.pub.currentPlayer = 1 - mirrored.pub.currentPlayer;
+  mirrored.pub.ancientSecondPlayer = 1 - mirrored.pub.ancientSecondPlayer;
+  mirrored.pub.jokerUsed = [mirrored.pub.jokerUsed[1], mirrored.pub.jokerUsed[0]];
+  mirrored.pub.wonderMark = [mirrored.pub.wonderMark[1], mirrored.pub.wonderMark[0]];
+  mirrored.pub.taken = [mirrored.pub.taken[1], mirrored.pub.taken[0]];
+  mirrored.pub.score = {human: mirrored.pub.score.ai, ai: mirrored.pub.score.human};
+
+  if (mirrored.pub.kingWonder){
+    mirrored.pub.kingWonder.builder = 1 - mirrored.pub.kingWonder.builder;
+  }
+
+  return mirrored;
+}
+
+function chooseMoveForPlayer(state, player, options={}){
+  const startedAt = performance.now();
+  const report = (algo)=>{
+    if (typeof options.debugSink === "function"){
+      options.debugSink({
+        player,
+        level: options.level || "mc",
+        algo,
+        elapsedMs: performance.now() - startedAt
+      });
+    }
+  };
+  const level = options.level || "mc";
+  const deadline = Number.isFinite(options.deadline) ? options.deadline : Infinity;
+  const forcedKingFinal = chooseBestKingFinalBruteforce(state, player);
+  if (forcedKingFinal){ report("kingFinal-bruteforce"); return forcedKingFinal; }
+  if (player===1) return aiChoose(state, {level, deadline, debugSink: options.debugSink});
+  if (player!==0) return null;
+
+  // Fast path for stats/batch runs: avoid full mirror+clone when we only need
+  // a quick decision for player 0.
+  if (level === "random") { const mv = chooseRandomForPlayer(state, 0); report("random"); return mv; }
+  if (level === "greedy") { const mv = chooseFastHeuristicForPlayer(state, 0); report("greedy"); return mv; }
+  if ((deadline - performance.now()) <= MC_FALLBACK_MIN_REMAINING_MS) { const mv = chooseFastHeuristicForPlayer(state, 0); report("fast"); return mv; }
+
+  const mirrored = mirrorStateForPlayerZero(state);
+  const mv = aiChoose(mirrored, {level, deadline});
+  report(level === "mc" ? "mc+mirror" : level);
+  return mv;
+}
+
+function chooseRandomForPlayer(state, player){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, player);
+  return moves[randInt(moves.length)];
+}
+
+function chooseFastHeuristicForPlayer(state, player){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, player);
+  if (moves.length <= 1) return moves[0];
+  const top = topCandidateMoves(state, pv, moves, player);
+  return (top[0] && top[0].move) ? top[0].move : moves[0];
+}
+
+function aiFastHeuristic(state){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, 1);
+  if (moves.length <= 1) return moves[0];
+  const top = topCandidateMoves(state, pv, moves, 1);
+  return (top[0] && top[0].move) ? top[0].move : moves[0];
+}
+
+function aiRandom(state){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, 1);
+  return moves[randInt(moves.length)];
+}
+
+function aiGreedy(state){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, 1);
+  let best = moves[0], bestScore = -1e9;
+
+  for(const mv of moves){
+    const score = estimateMoveValue(state, mv);
+    if (score > bestScore){ bestScore = score; best = mv; }
+  }
+  return best;
+}
+
+function estimateMoveValue(state, mv){
+  // Apply on an engine copy to estimate, without DOM.
+  const sim = cloneEngineStateForSim(state);
+  applyAIMoveToSim(sim, mv);
+  const pv2 = Engine.getPublicView(sim);
+  return quickEval(pv2, 1) + 0.08 * countVisibleAccessible(pv2);
+}
+
+function countVisibleAccessible(pv){
+  let k=0;
+  for(let i=0;i<pv.slots.length;i++){
+    const s = pv.slots[i];
+    if (!s.removed && !s.faceDown && Engine.isAccessible(pv, i)) k++;
+  }
+  return k;
+}
+
+function cloneEngineStateForSim(state){
+  // Per simulazioni: duplichiamo sia pub che secret.
+  // Note: here it is OK to duplicate secrets because it is the “ground truth” of the world. But Monte Carlo reshuffles face-down cards using the unknown pool.
+  let sim;
+  if (typeof structuredClone==="function") sim = structuredClone(state);
+  else sim = JSON.parse(JSON.stringify(state));
+  sim.__sim = true;
+  return sim;
+}
+
+function aiMonteCarlo(state, deadline=Infinity){
+  const pv = Engine.getPublicView(state);
+  const moves = enumerateMoves(pv, 1);
+  if (moves.length <= 1) return moves[0];
+
+  if (moves.every(mv => mv.type === "kingFinal")){
+    return chooseBestKingFinalBruteforce(state, 1) || moves[0];
+  }
+
+  const sims = adaptiveMCSimsForAge(pv);
+  const root = buildRootCandidates(state, pv, moves);
+  if (root.length <= 1) return root[0].move;
+
+  const acc = Array(root.length).fill(0);
+  const counts = Array(root.length).fill(0);
+  const priors = root.map(r => r.prior);
+
+  // unknown pool: list of card.id (of the current age) that are not known to the AI
+  const poolIds = Engine.unknownPoolForAI(pv);
+  const age = pv.age;
+  const idToCard = getIdToCardForAge(age);
+
+  let simulated = 0;
+
+  while (performance.now() < deadline){
+    const m = pickRootMoveByUcb(acc, counts, priors, sims);
+    if (m < 0) break;
+
+    const sim = cloneEngineStateForSim(state);
+    assignUnknownFaceDownFromPool(sim, poolIds, idToCard);
+
+    // applica mossa candidata e poi playout veloce fino alla fine
+    applyAIMoveToSim(sim, root[m].move);
+    playoutSim(sim);
+
+    // valore: score ai - score human
+    const terminalDiff = (sim.pub.score.ai - sim.pub.score.human);
+    const pvEnd = Engine.getPublicView(sim);
+    const bootstrap = quickEval(pvEnd, 1);
+    const blended = terminalDiff + MC_BOOTSTRAP_WEIGHT * bootstrap;
+    acc[m] += blended;
+    counts[m]++;
+    simulated++;
+  }
+
+  if (simulated===0) return aiGreedy(state);
+
+  let best = root[0].move, bestVal = -1e9;
+  for(let i=0;i<root.length;i++){
+    if (counts[i]===0) continue;
+    const exp = acc[i] / counts[i];
+    if (exp > bestVal){ bestVal = exp; best = root[i].move; }
+  }
+
+  return best;
+}
+
+function chooseBestKingFinalBruteforce(state, player){
+  const pv = Engine.getPublicView(state);
+  if (!pv.kingWonder || pv.kingWonder.phase !== "finalChoice") return null;
+  if (pv.kingWonder.builder !== player) return null;
+
+  const moves = enumerateMoves(pv, player).filter(mv => mv.type === "kingFinal");
+  if (!moves.length) return null;
+
+  let bestMove = moves[0];
+  let bestScore = -Infinity;
+
+  for (const mv of moves){
+    const sim = cloneEngineStateForSim(state);
+    const result = Engine.chooseKingWonder(sim, {cardId: mv.cardId, delta: mv.delta}, true);
+    if (!result?.ok) continue;
+
+    const scoreDiff = player===1
+      ? (sim.pub.score.ai - sim.pub.score.human)
+      : (sim.pub.score.human - sim.pub.score.ai);
+
+    if (
+      scoreDiff > bestScore ||
+      (scoreDiff === bestScore && mv.delta > bestMove.delta) ||
+      (scoreDiff === bestScore && mv.delta === bestMove.delta && String(mv.cardId).localeCompare(String(bestMove.cardId)) < 0)
+    ){
+      bestScore = scoreDiff;
+      bestMove = mv;
+    }
+  }
+
+  return bestMove;
+}
+
+function buildRootCandidates(state, publicView, moves){
+  const topScored = topCandidateMoves(state, publicView, moves, 1);
+  const scored = topScored.length ? topScored : moves.map(mv => ({move:mv, score: estimateMoveValue(state,mv), parts:{}}));
+
+  const top = scored[0]?.score ?? -1e9;
+  const keepByMargin = scored.filter(x => x.score >= top - MC_ROOT_PRUNE_MARGIN);
+
+  const keepTarget = Math.max(
+    MC_ROOT_MIN_KEEP,
+    Math.ceil(scored.length * MC_ROOT_KEEP_FRACTION)
+  );
+  const keepCount = Math.min(scored.length, Math.max(keepByMargin.length, keepTarget));
+  const keep = scored.slice(0, keepCount);
+
+  return keep.map((entry, idx) => {
+    const prior = 1 / (1 + idx) + Math.max(0, entry.score - (top - MC_ROOT_PRUNE_MARGIN));
+    return { move: entry.move, prior };
+  });
+}
+
+function estimateDenialScore(publicView, mv, perspective){
+  if (mv.type !== "take") return 0;
+  const sl = publicView.slots[mv.idx];
+  const card = sl?.card;
+  if (!card) return 0;
+
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+
+  const nextMe = me.concat([card]);
+  const nextOpp = opp.concat([card]);
+  const gainMe = quickEvalForTaken(nextMe, opp, publicView.age) - quickEvalForTaken(me, opp, publicView.age);
+  const denyOpp = quickEvalForTaken(me, nextOpp, publicView.age) - quickEvalForTaken(me, opp, publicView.age);
+
+  return 0.30 * Math.max(0, denyOpp) + 0.15 * Math.max(0, gainMe);
+}
+
+function quickEvalForTaken(me, opp, age){
+  const wS = (age==="ancient") ? 1.3 : 1.5;
+  const wC = 0.25, wD = 1.2, wH = 2.6;
+
+  const dS = (militaryShields(me) - militaryShields(opp)) * wS;
+  const dC = (sumSuit(me,"C") - sumSuit(opp,"C")) * wC;
+  const cult = cultureContestVP(me, opp);
+  const dD = (cult.h - cult.a) * wD;
+  const dH = (heartBreakthroughs(me) - heartBreakthroughs(opp)) * wH;
+  const pen = 0.6 * (Math.max(0, countValue(me,5)-2) + Math.max(0, countValue(me,10)-2));
+  return dS + dC + dD + dH - pen;
+}
+
+
+function aiCandidateKForPublicView(publicView){
+  const age = publicView.age;
+  const inAge = publicView.taken[0].concat(publicView.taken[1]).filter(c=>c.age===age).length;
+  if (inAge < 3) return AI_CANDIDATE_K_OPENING;
+  if (inAge < 10) return AI_CANDIDATE_K_MID;
+  return AI_CANDIDATE_K_LATE;
+}
+
+function heartsMarginalGain(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="H") return 0;
+  return heartBreakthroughs(cards.concat([card])) - heartBreakthroughs(cards);
+}
+
+function foodMarginalGain(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="C") return 0;
+  return foodPoints(cards.concat([card])) - foodPoints(cards);
+}
+
+function heartsThreatFromCard(cards, card){
+  if (!card || card.kind!=="card" || card.suit!=="H") return 0;
+  const gain = heartsMarginalGain(cards, card);
+  const nextBreakthroughs = heartBreakthroughs(cards.concat([card]));
+  if (gain <= 0) return 0;
+  if (nextBreakthroughs >= 3) return 8;
+  return 2.4 + 1.2 * nextBreakthroughs;
+}
+
+
+function strategicModeWeights(publicView, perspective){
+  const meScore = (perspective===1) ? publicView.score.ai : publicView.score.human;
+  const oppScore = (perspective===1) ? publicView.score.human : publicView.score.ai;
+  const lead = meScore - oppScore;
+
+  const defend = Math.max(0, Math.min(1, lead / 10));
+  const chase = Math.max(0, Math.min(1, -lead / 10));
+
+  return {
+    self: 1.0 + 0.18 * chase,
+    deny: 1.0 + 0.40 * defend,
+    reveal: 1.0 + 0.28 * defend,
+    tempo: 1.0 + 0.20 * defend,
+    risk: 1.0 - 0.12 * chase
+  };
+}
+
+function spadeRecoverabilityPenalty(publicView, me, opp, card){
+  if (!card || card.kind!=="card" || card.suit!=="S") return 0;
+
+  const myShields = militaryShields(me, null);
+  const oppShields = militaryShields(opp, null);
+  const myAfter = myShields + spadeShieldValue(card.value);
+  const gapAfter = oppShields - myAfter;
+
+  if (gapAfter <= 0) return 0;
+  if (gapAfter >= 10) return 4.5;
+  if (gapAfter >= 8) return 2.4;
+  if (gapAfter >= 6) return 1.2;
+  return 0;
+}
+
+function leaderOpportunityScore(state, perspective){
+  const sim = cloneEngineStateForSim(state);
+  applyAIMoveToSim(sim, {type:"leader"});
+  if (sim.pub.currentPlayer !== perspective) return 0;
+
+  const pv1 = Engine.getPublicView(sim);
+  const takes1 = enumerateMoves(pv1, perspective).filter(m=>m.type==="take");
+  if (!takes1.length) return 0;
+
+  let best1 = null;
+  for (const mv of takes1){
+    const score = scoreCandidateMove(sim, pv1, mv, perspective).score;
+    if (!best1 || score > best1.score) best1 = {mv, score};
+  }
+  if (!best1) return 0;
+
+  applyAIMoveToSim(sim, best1.mv);
+  if (sim.pub.currentPlayer !== perspective) return 0.18 * Math.max(0, best1.score);
+
+  const pv2 = Engine.getPublicView(sim);
+  const takes2 = enumerateMoves(pv2, perspective).filter(m=>m.type==="take");
+  let best2 = 0;
+  for (const mv of takes2){
+    const score = scoreCandidateMove(sim, pv2, mv, perspective).score;
+    if (score > best2) best2 = score;
+  }
+
+  return 0.16 * Math.max(0, best1.score) + 0.12 * Math.max(0, best2);
+}
+
+function kingLeverageScore(me, opp, card){
+  if (!card || card.kind!=="king") return 0;
+  const myKings = countKingsInCards(me);
+  const oppKings = countKingsInCards(opp);
+  let score = 4.0;
+  if (myKings===2) score += 9.0;
+  if (oppKings===2) score += 6.0;
+  return score;
+}
+
+function wouldCompleteCalamity(cards, card, value){
+  if (!card || card.kind!=="card" || card.value!==value) return false;
+  const suits = new Set();
+  for (const c of cards){
+    if (c.kind==="card" && c.value===value) suits.add(c.suit);
+  }
+  suits.add(card.suit);
+  return suits.size===4;
+}
+
+function revealPenalty(publicView, mv, perspective){
+  if (mv.type!=="take") return 0;
+  const idx = mv.idx;
+  const slot = publicView.slots[idx];
+  if (!slot || slot.faceDown || slot.removed) return 0;
+  const row = Number(slot.row);
+  const col = Number(slot.col);
+  if (!Number.isFinite(row) || !Number.isFinite(col)) return 0;
+
+  let penalty = 0;
+  const blockers = [
+    {r: row-1, c: col-1},
+    {r: row-1, c: col}
+  ];
+  for (const b of blockers){
+    const bl = publicView.slots.find(s => Number(s.row)===b.r && Number(s.col)===b.c);
+    if (!bl || bl.removed || !bl.faceDown) continue;
+
+    let expected = 0.65;
+    // Approx expected leverage from unknown card: Kings, hearts bridges, culture ladders.
+    if (publicView.age==="modern") expected += 0.35;
+    const me = publicView.taken[perspective];
+    const opp = publicView.taken[1-perspective];
+    const myKings = countKingsInCards(me);
+    const oppKings = countKingsInCards(opp);
+    if (myKings===2 || oppKings===2) expected += 0.55;
+
+    penalty += expected;
+  }
+  return penalty;
+}
+
+function tempoGivePenalty(publicView, state, mv, perspective){
+  if (mv.type!=="take") return 0;
+  const sim = cloneEngineStateForSim(state);
+  applyAIMoveToSim(sim, mv);
+  const pv2 = Engine.getPublicView(sim);
+  const opp = 1 - perspective;
+  const moves = enumerateMoves(pv2, opp).filter(m=>m.type==="take");
+  if (!moves.length) return 0;
+
+  let bestThreat = 0;
+  for (const m of moves){
+    const c = pv2.slots[m.idx]?.card;
+    if (!c) continue;
+    const oppCards = pv2.taken[opp];
+    const meCards = pv2.taken[perspective];
+    let threat = 0;
+    if (c.kind==="king") threat += 2.8;
+    threat += heartsThreatFromCard(oppCards, c);
+    threat += 0.8 * foodMarginalGain(oppCards, c);
+    threat += 0.35 * Math.max(0, estimateDenialScore(pv2, m, opp));
+    if (c.suit==="D"){
+      const before = cultureContestVP(meCards, oppCards);
+      const afterOpp = cultureContestVP(meCards, oppCards.concat([c]));
+      threat += Math.max(0, (afterOpp.a - before.a));
+    }
+    if (threat > bestThreat) bestThreat = threat;
+  }
+
+  return 0.18 * moves.length + 0.45 * bestThreat;
+}
+
+function leaderUrgencyScore(publicView, perspective){
+  if (publicView.age !== "modern") return 0;
+
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+  const myKings = countKingsInCards(me);
+  const oppKings = countKingsInCards(opp);
+  const inAge = publicView.taken[0].concat(publicView.taken[1]).filter(c => c.age === "modern").length;
+
+  let bonus = 1.8;
+  if (myKings >= 2) bonus += 2.2;
+  if (oppKings >= 2) bonus += 1.0;
+  if (inAge >= 8) bonus += 0.8;
+
+  return bonus;
+}
+
+function scoreCandidateMove(state, publicView, mv, perspective){
+  if (mv.type!=="take"){
+    if (mv.type==="leader"){
+      const urgency = leaderUrgencyScore(publicView, perspective);
+      const opportunity = leaderOpportunityScore(state, perspective);
+      return {score: 1.2 + urgency + opportunity, parts:{special:1.2, leaderUrgency:urgency, leaderOpportunity:opportunity}};
+    }
+    if (mv.type==="modernSwap") return {score: 0.9, parts:{special:0.9}};
+    if (mv.type==="kingFinal") return {score: 0.4, parts:{special:0.4}};
+    return {score: -1000, parts:{special:-1000}};
+  }
+
+  const card = publicView.slots[mv.idx]?.card;
+  if (!card) return {score: -1000, parts:{missing:-1000}};
+
+  const me = publicView.taken[perspective];
+  const opp = publicView.taken[1-perspective];
+
+  const foodGain = foodMarginalGain(me, card);
+  const heartsGain = heartsMarginalGain(me, card);
+  const meBase = quickEvalForTaken(me, opp, publicView.age);
+  const meAfter = quickEvalForTaken(me.concat([card]), opp, publicView.age);
+  const selfGain = (meAfter - meBase) + 1.2*foodGain + 0.9*heartsGain + kingLeverageScore(me, opp, card);
+
+  const denyGain = estimateDenialScore(publicView, mv, perspective);
+  const reveal = revealPenalty(publicView, mv, perspective);
+  const tempo = tempoGivePenalty(publicView, state, mv, perspective);
+  const mode = strategicModeWeights(publicView, perspective);
+
+  let risk = 0;
+  if (wouldCompleteCalamity(me, card, 5)) risk += 5.5;
+  if (wouldCompleteCalamity(me, card, 10)) risk += 7.5;
+  if (card.suit==="H" && heartsGain<=0) risk += 1.2;
+  if (card.suit==="C" && foodGain<=0) risk += 0.7;
+  risk += spadeRecoverabilityPenalty(publicView, me, opp, card);
+
+  const weightedSelf = mode.self * selfGain;
+  const weightedDeny = mode.deny * denyGain;
+  const weightedReveal = mode.reveal * reveal;
+  const weightedTempo = mode.tempo * tempo;
+  const weightedRisk = mode.risk * risk;
+
+  return {
+    score: weightedSelf + weightedDeny - weightedReveal - weightedTempo - weightedRisk,
+    parts: {selfGain:weightedSelf, denyGain:weightedDeny, reveal:weightedReveal, tempo:weightedTempo, risk:weightedRisk}
+  };
+}
+
+function topCandidateMoves(state, publicView, moves, perspective){
+  const k = aiCandidateKForPublicView(publicView);
+  const scored = moves.map(mv => {
+    const s = scoreCandidateMove(state, publicView, mv, perspective);
+    return {move: mv, score: s.score, parts: s.parts};
+  });
+  scored.sort((a,b)=>b.score-a.score);
+  return scored.slice(0, Math.min(k, scored.length));
+}
+
+function pickRootMoveByUcb(acc, counts, priors, sims){
+  let total = 0;
+  for (const c of counts) total += c;
+
+  let best = -1;
+  let bestUcb = -1e18;
+  const logTotal = Math.log(total + 1);
+
+  for (let i=0;i<counts.length;i++){
+    if (counts[i] >= sims) continue;
+
+    const c = counts[i];
+    if (c===0) return i;
+
+    const mean = acc[i] / c;
+    const explore = MC_UCB_EXPLORATION * Math.sqrt(logTotal / c);
+    const priorBonus = MC_UCB_PRIOR_BONUS * priors[i] / (1 + c);
+    const ucb = mean + explore + priorBonus;
+    if (ucb > bestUcb){ bestUcb = ucb; best = i; }
+  }
+  return best;
+}
+
+const _ageDeckCache = new Map();
+function getIdToCardForAge(age){
+  if (_ageDeckCache.has(age)) return _ageDeckCache.get(age);
+  const map = new Map(makeAgeDeck(age).map(c=>[c.id,c]));
+  _ageDeckCache.set(age, map);
+  return map;
+}
+
+function assignUnknownFaceDownFromPool(sim, poolIds, idToCard){
+  const pool = poolIds.slice();
+  shuffle(pool);
+  let pi = 0;
+  for(let i=0;i<sim.pub.slots.length;i++){
+    const sl = sim.pub.slots[i];
+    if (sl.removed) continue;
+    if (!sl.faceDown) continue;
+    const id = pool[pi++];
+    if (!id) break;
+    sim.secret[i] = idToCard.get(id);
+    sl.card = null;
+  }
+}
+
+function adaptiveMCSimsForAge(publicView){
+  const age = publicView.age;
+  const takenInAge = publicView.taken[0].concat(publicView.taken[1]).filter(c => c.age===age).length;
+  if (takenInAge < MC_ADAPTIVE_OPENING_TURNS) return MC_SIMS_OPENING;
+  if (takenInAge < MC_ADAPTIVE_EARLY_TURNS) return MC_SIMS_EARLY;
+  return MC_SIMS_LATE;
+}
+
+function applyAIMoveToSim(sim, mv){
+  if (mv.type==="kingFinal"){
+    Engine.chooseKingWonder(sim, {cardId: mv.cardId, delta: mv.delta}, true);
+    return;
+  }
+  if (mv.type==="modernSwap"){
+    // decide il secondo della Modern Age (AI = 1)
+    Engine.useModernSwap(sim, 1);
+    return;
+  }
+  if (mv.type==="leader"){
+    Engine.useJokerDouble(sim);
+    return;
+  }
+  if (mv.type==="take"){
+    Engine.take(sim, mv.idx);
+    return;
+  }
+  if (mv.type==="pass"){
+    sim.pub.picksLeftThisTurn = 1;
+    sim.pub.currentPlayer = 1 - sim.pub.currentPlayer;
+    return;
+  }
+}
+
+function playoutSim(sim){
+  // Fast policy until the game ends.
+  let guard = 0;
+  while(!sim.pub.ended && guard < MC_ROLLOUT_MAX_PLIES){
+    guard++;
+    const player = sim.pub.currentPlayer;
+    const pv = Engine.getPublicView(sim);
+    const moves = enumerateMoves(pv, player);
+    let mv = moves[0];
+
+    if (MC_PLAYOUT==="random"){
+      mv = moves[randInt(moves.length)];
+    } else {
+      const top = topCandidateMoves(sim, pv, moves, player);
+      const eps = MC_ROLLOUT_EPSILON_START + (MC_ROLLOUT_EPSILON_END - MC_ROLLOUT_EPSILON_START) * Math.min(1, guard / 40);
+      if (top.length && Math.random() > eps) mv = top[0].move;
+      else if (top.length) mv = top[randInt(top.length)].move;
+      else mv = moves[randInt(moves.length)];
+    }
+    applyAIMoveToSim(sim, mv);
+
+    // disable swap after the first Modern pick (if not already)
+    if (sim.pub.age==="modern" && sim.pub.modernSwapStillAvailable){
+      const anyModernTaken = sim.pub.taken[0].concat(sim.pub.taken[1]).some(c=>c.age==="modern");
+      if (anyModernTaken) sim.pub.modernSwapStillAvailable = false;
+    }
+  }
+}
+
+/* ============================================================
+   5) UI (solo rendering + input)
+   ============================================================ */
+
+let STATE = null;
+let LAST_AI_PICK_ID = null;
+
+const elTableau = document.getElementById("tableau");
+const elLog = document.getElementById("log");
+const elAgePill = document.getElementById("agePill");
+const elTurnPill = document.getElementById("turnPill");
+const elActionPill = document.getElementById("actionPill");
+const elScorePill = document.getElementById("scorePill");
+const elStatusLine = document.getElementById("statusLine");
+const elCompareBody = document.getElementById("compareBody");
+const btnNew = document.getElementById("newGameBtn");
+const btnLeader = document.getElementById("leaderBtn");
+const btnLeaderSide = document.getElementById("leaderBtnSide");
+const cbDebug = document.getElementById("debugIdx");
+
+const elModal = document.getElementById("modalOverlay");
+const btnModalYes = document.getElementById("modalYesBtn");
+const btnModalNo = document.getElementById("modalNoBtn");
+let MODAL_OPEN = false;
+function openModal(){ MODAL_OPEN = true; elModal.style.display = "flex"; }
+function closeModal(){ MODAL_OPEN = false; elModal.style.display = "none"; }
+
+
+const elKingOverlay = document.getElementById("kingOverlay");
+const elKingTitle = document.getElementById("kingTitle");
+const elKingMsg = document.getElementById("kingMsg");
+const elKingReq = document.getElementById("kingReq");
+const elKingGrid = document.getElementById("kingCardsGrid");
+const elKingErr = document.getElementById("kingErr");
+const btnKingDeltaMinusTwo = document.getElementById("kingDeltaMinusTwoBtn");
+const btnKingDeltaMinus = document.getElementById("kingDeltaMinusBtn");
+const btnKingDeltaBase = document.getElementById("kingDeltaBaseBtn");
+const btnKingDeltaPlus = document.getElementById("kingDeltaPlusBtn");
+const btnKingDeltaPlusTwo = document.getElementById("kingDeltaPlusTwoBtn");
+const btnKingConfirm = document.getElementById("kingConfirmBtn");
+
+let KING_OPEN = false;
+let KING_CTX = "";
+let KING_SELECTED = new Set();
+
+function openKingOverlay(){
+  KING_OPEN = true;
+  if (elKingOverlay) elKingOverlay.style.display = "flex";
+}
+function closeKingOverlay(){
+  KING_OPEN = false;
+  KING_CTX = "";
+  KING_SELECTED.clear();
+  if (elKingOverlay) elKingOverlay.style.display = "none";
+  if (elKingErr) elKingErr.textContent = "";
+}
+
+function _findCardById(id){
+  const pub = STATE?.pub;
+  if (!pub) return null;
+  for (const c of pub.taken[0]) if (c && c.id===id) return c;
+  for (const c of pub.taken[1]) if (c && c.id===id) return c;
+  return null;
+}
+function _cardsForIds(ids){
+  return (ids||[]).map(_findCardById).filter(Boolean);
+}
+function _kingCtxKey(kw){
+  const b = kw.eligibleIds ? kw.eligibleIds.slice().join(",") : "";
+  return `${kw.phase}|${kw.builder}|${b}`;
+}
+function _modernCount(ids){
+  let n = 0;
+  for (const id of ids){
+    const c = _findCardById(id);
+    if (c && c.age==="modern") n++;
+  }
+  return n;
+}
+
+function syncKingOverlay(){
+  if (!STATE || !STATE.pub){ if (KING_OPEN) closeKingOverlay(); return; }
+  const kw = STATE.pub.kingWonder;
+  if (!kw){ if (KING_OPEN) closeKingOverlay(); return; }
+
+  const key = _kingCtxKey(kw);
+  if (key !== KING_CTX){
+    KING_CTX = key;
+    KING_SELECTED.clear();
+    const presetId = STATE?.pub?.wonderMark?.[kw.builder]?.cardId;
+    if (presetId) KING_SELECTED.add(presetId);
+    if (elKingErr) elKingErr.textContent = "";
+  }
+
+  openKingOverlay();
+  if (!elKingTitle || !elKingMsg || !elKingReq || !elKingGrid || !btnKingConfirm) return;
+
+  const builderName = playerName(kw.builder);
+
+  elKingTitle.textContent = "King Wonder — Final card and value";
+  elKingMsg.innerHTML = `<b>${builderName}</b>: choose the card to boost and its final modifier.`;
+  elKingReq.textContent = "Select 1 non-King card and set -2 / -1 / 0 (base) / +1 / +2.";
+
+  const cards = _cardsForIds(kw.eligibleIds || []);
+  renderKingCards(cards, kw);
+}
+
+function tuneKingOverlayLayout(cardCount, phase){
+  if (!elKingOverlay || !elKingGrid) return;
+  const vh = window.innerHeight || 800;
+  const vw = window.innerWidth || 400;
+  let miniW = 58;
+  if (vh <= 740 || vw <= 700) miniW = 52;
+  if (vh <= 640) miniW = 46;
+
+  if (cardCount >= 16) miniW -= 8;
+  else if (cardCount >= 12) miniW -= 6;
+  else if (cardCount >= 9) miniW -= 4;
+
+  miniW = Math.max(40, Math.min(60, miniW));
+  const miniH = Math.round(miniW * 1.38);
+  const gap = miniW <= 46 ? 4 : (miniW <= 52 ? 5 : 6);
+
+  elKingOverlay.style.setProperty('--kingMiniW', `${miniW}px`);
+  elKingOverlay.style.setProperty('--kingMiniH', `${miniH}px`);
+  elKingOverlay.style.setProperty('--kingGap', `${gap}px`);
+}
+
+function renderKingCards(cards, kw){
+  if (!elKingGrid || !btnKingConfirm) return;
+  elKingGrid.innerHTML = "";
+
+  const phase = kw.phase;
+  tuneKingOverlayLayout((cards||[]).length, phase);
+  const suitOrder = {S:0, C:1, H:2, D:3};
+  const sortedCards = (cards||[]).slice().sort((a,b)=>{
+    const s = (suitOrder[a?.suit] ?? 99) - (suitOrder[b?.suit] ?? 99);
+    if (s!==0) return s;
+    const av = (a?.kind === "king") ? 99 : (a?.value ?? 0);
+    const bv = (b?.kind === "king") ? 99 : (b?.value ?? 0);
+    if (av!==bv) return av-bv;
+    return String(a?.id||"").localeCompare(String(b?.id||""));
+  });
+
+  function canSelect(card){
+    if (KING_SELECTED.has(card.id)) return true; // always allow deselect
+    return KING_SELECTED.size < 1;
+  }
+
+  function renderMiniCard(c){
+    const el = document.createElement("div");
+    el.className = "miniCard";
+    if (phase === "finalChoice") el.classList.add("finalChoice");
+    if (c && c.suit) el.classList.add("suit" + c.suit);
+    if (KING_SELECTED.has(c.id)) el.classList.add("selected");
+
+    const selectable = canSelect(c);
+    if (!selectable && !KING_SELECTED.has(c.id)) el.classList.add("disabled");
+
+    const big = document.createElement("div");
+    big.className = "big";
+    big.textContent = cardLabel(c);
+
+    const small = document.createElement("div");
+    small.className = "small";
+    small.textContent = (c.age === "modern") ? "modern" : "ancient";
+
+    el.appendChild(small);
+    el.appendChild(big);
+
+    el.addEventListener("click", ()=>{
+      if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
+      if (!selectable && !KING_SELECTED.has(c.id)) return;
+      if (KING_SELECTED.has(c.id)) KING_SELECTED.delete(c.id);
+      else KING_SELECTED.add(c.id);
+
+      // Re-render to apply button state
+      syncKingOverlay();
+    });
+
+    return el;
+  }
+
+  const grouped = {S:[], C:[], H:[], D:[]};
+  for (const c of sortedCards){
+    if (!c || !grouped[c.suit]) continue;
+    grouped[c.suit].push(c);
+  }
+
+  for (const s of ["S","C","H","D"]){
+    const groupCards = grouped[s];
+    if (!groupCards.length) continue;
+    const box = document.createElement("div");
+    box.className = "kingSuitGroup";
+
+    const ttl = document.createElement("div");
+    ttl.className = "kingSuitTitle";
+    ttl.textContent = `${SUIT_ICON[s]} ${SUIT_NAME[s]}`;
+    box.appendChild(ttl);
+
+    const row = document.createElement("div");
+    row.className = "kingSuitCards";
+    for (const c of groupCards) row.appendChild(renderMiniCard(c));
+    box.appendChild(row);
+    elKingGrid.appendChild(box);
+  }
+
+  const wm = STATE?.pub?.wonderMark?.[kw.builder] || {};
+  const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+  const selectedId = [...KING_SELECTED][0] || null;
+  if (selectedId){
+    wm.cardId = selectedId;
+    STATE.pub.wonderMark[kw.builder] = wm;
+  }
+
+  const legalSet = selectedId
+    ? new Set(legalWonderDeltas(STATE.pub.taken[kw.builder], selectedId, [0,1].map(p=>{ const wm = STATE.pub.wonderMark?.[p] || {}; return {cardId: wm.cardId || null, delta: Number(wm.delta)||0}; })))
+    : null;
+  const curIsLegal = !legalSet || legalSet.has(cur);
+
+  btnKingConfirm.textContent = `Confirm (${cur>=0?`+${cur}`:String(cur)})`;
+  btnKingConfirm.disabled = (KING_SELECTED.size !== 1) || !curIsLegal;
+  if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.disabled = !!legalSet && !legalSet.has(-2);
+  if (btnKingDeltaMinus) btnKingDeltaMinus.disabled = !!legalSet && !legalSet.has(-1);
+  if (btnKingDeltaBase) btnKingDeltaBase.disabled = !!legalSet && !legalSet.has(0);
+  if (btnKingDeltaPlus) btnKingDeltaPlus.disabled = !!legalSet && !legalSet.has(1);
+  if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.disabled = !!legalSet && !legalSet.has(2);
+  if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.classList.toggle("primary", cur===-2);
+  if (btnKingDeltaMinus) btnKingDeltaMinus.classList.toggle("primary", cur===-1);
+  if (btnKingDeltaBase) btnKingDeltaBase.classList.toggle("primary", cur===0);
+  if (btnKingDeltaPlus) btnKingDeltaPlus.classList.toggle("primary", cur===1);
+  if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.classList.toggle("primary", cur===2);
+  if (elKingErr) elKingErr.textContent = (KING_SELECTED.size!==1)
+    ? "Select exactly 1 card, then choose a legal modifier and Confirm."
+    : (!curIsLegal
+      ? "Current modifier is illegal for this card (range 1..10 and no suit duplicates). Choose another."
+      : "Click the selected card to deselect, or press Confirm.");
+}
+
+function logFinalize(res, beforeAge){
+  if (!res) return;
+  if (res.flipped>0) logLine(`${res.flipped} card(s) revealed.`);
+  if (res.endedAge && beforeAge==="ancient"){
+    logLine(`End of the Ancient Age. The Modern Age starts now: first player ${playerName(STATE.pub.currentPlayer)}.`);
+    if (STATE.pub.modernSwapStillAvailable) logLine("Note: the Leader choice to change turn order is available to the second player (before any Modern pick).");
+  }
+  if (res.endedGame){
+    logLine(`End of the Modern Age. Final score: Human ${STATE.pub.score.human} – AI ${STATE.pub.score.ai}.`);
+  }
+}
+
+window.addEventListener("resize", ()=>{
+  if (KING_OPEN) syncKingOverlay();
+});
+
+if (btnKingConfirm) btnKingConfirm.addEventListener("click", ()=>{
+  if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
+
+  const kw = STATE.pub.kingWonder;
+  const beforeAge = STATE.pub.age;
+
+  const p = kw.builder;
+  const wm = STATE.pub.wonderMark[p] || {};
+  const selectedId = [...KING_SELECTED][0] || wm.cardId || null;
+  const cur = (wm && typeof wm.delta === "number") ? wm.delta : 0;
+  const r = Engine.chooseKingWonder(STATE, {cardId:selectedId, delta:cur});
+  if (!r.ok){
+    if (elKingErr) elKingErr.textContent = r.msg || "Invalid choice.";
+    return;
+  }
+  const c = _findCardById(r.kingWonderCardId);
+  logLine(`King Wonder: ${playerName(p)} final choice on ${cardLabel(c)} = ${r.kingWonderDelta>=0?`+${r.kingWonderDelta}`:String(r.kingWonderDelta)}.`);
+  logFinalize(r, beforeAge);
+  render();
+  maybeAIMove();
+});
+
+function setKingDelta(delta){
+  if (!STATE || !STATE.pub || !STATE.pub.kingWonder) return;
+  const kw = STATE.pub.kingWonder;
+  const wm = STATE.pub.wonderMark[kw.builder];
+  if (!wm) return;
+  if (![-2,-1,0,1,2].includes(delta)) return;
+  const selectedId = [...KING_SELECTED][0] || wm.cardId || null;
+  if (selectedId){
+    const legal = legalWonderDeltas(STATE.pub.taken[kw.builder], selectedId, [0,1].map(p=>{ const wm = STATE.pub.wonderMark?.[p] || {}; return {cardId: wm.cardId || null, delta: Number(wm.delta)||0}; }));
+    if (!legal.includes(delta)) return;
+  }
+  wm.delta = delta;
+  syncKingOverlay();
+}
+
+if (btnKingDeltaMinusTwo) btnKingDeltaMinusTwo.addEventListener("click", ()=>setKingDelta(-2));
+if (btnKingDeltaMinus) btnKingDeltaMinus.addEventListener("click", ()=>setKingDelta(-1));
+if (btnKingDeltaBase) btnKingDeltaBase.addEventListener("click", ()=>setKingDelta(0));
+if (btnKingDeltaPlus) btnKingDeltaPlus.addEventListener("click", ()=>setKingDelta(1));
+if (btnKingDeltaPlusTwo) btnKingDeltaPlusTwo.addEventListener("click", ()=>setKingDelta(2));
+
+
+const elEnd = document.getElementById("endOverlay");
+const elEndBody = document.getElementById("endBody");
+const elEndWinnerLine = document.getElementById("endWinnerLine");
+const elEndScoreLine = document.getElementById("endScoreLine");
+const btnEndClose = document.getElementById("endCloseBtn");
+const btnEndNew = document.getElementById("endNewBtn");
+
+let END_OPEN = false;
+let END_SHOWN = false;
+
+function openEndOverlay(){
+  END_OPEN = true;
+  elEnd.style.display = "flex";
+}
+function closeEndOverlay(){
+  END_OPEN = false;
+  elEnd.style.display = "none";
+}
+
+btnEndClose.addEventListener("click", ()=> closeEndOverlay());
+btnEndNew.addEventListener("click", ()=>{
+  closeEndOverlay();
+  // trigger the existing New Game handler (does not alter engine logic)
+  btnNew.click();
+});
+
+/* Build a readable score breakdown without touching the engine rules */
+function culturePointsDetail(hCards, aCards, wonderMods=null){
+  // Culture is CONTESTED: across both players there are only two award tiers:
+  // - +8 to the best straight (len ≥ 2)
+  // - +4 to the shorter straight (len ≥ 2)
+  // In case of a tie on (len, high card), the tier is shared.
+  const res = cultureContestVP(hCards, aCards, wonderMods);
+
+  const hTop = res.hRuns.slice(0,2);
+  const aTop = res.aRuns.slice(0,2);
+
+  function ownersLabel(group){
+    if (!group || group.length===0) return "none";
+    const owners = Array.from(new Set(group.map(g=>g.owner))).sort();
+    if (owners.length===2) return "Human & AI (tie)";
+    return owners[0]===0 ? "Human" : "AI";
+  }
+  function awardText(group, pts){
+    if (!group || group.length===0) return `+${pts}: none`;
+    return `+${pts}: ${ownersLabel(group)} (${runText(group[0].run)})`;
+  }
+
+  const reason = `♦ Culture VP (contested): ${awardText(res.bestGroup,8)}; ${awardText(res.secondGroup,4)}.`;
+
+  return {
+    h: res.h,
+    a: res.a,
+    hRuns: hTop,
+    aRuns: aTop,
+    bestGroup: res.bestGroup,
+    secondGroup: res.secondGroup,
+    reason
+  };
+}
+
+function computeFinalBreakdown(){
+  const pub = STATE.pub;
+  const wonderMods = [0,1].map(p=>{
+    const wm = pub.wonderMark?.[p] || {};
+    return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+  });
+
+  const allH = pub.taken[0].slice();
+  const allA = pub.taken[1].slice();
+  const hAnc = allH.filter(c=>c.age==="ancient");
+  const aAnc = allA.filter(c=>c.age==="ancient");
+
+  const ancPen5H = hasAllFourOfValue(hAnc,5) ? -3 : 0;
+  const ancPen5A = hasAllFourOfValue(aAnc,5) ? -3 : 0;
+  const ancTotalH = ancPen5H;
+  const ancTotalA = ancPen5A;
+
+  const modFoodH = foodPoints(allH, wonderMods);
+  const modFoodA = foodPoints(allA, wonderMods);
+  const cult = culturePointsDetail(allH, allA, wonderMods);
+  const modPen10H = hasAllFourOfValue(allH,10) ? -6 : 0;
+  const modPen10A = hasAllFourOfValue(allA,10) ? -6 : 0;
+
+  const modTotalH = modFoodH + cult.h + modPen10H;
+  const modTotalA = modFoodA + cult.a + modPen10A;
+
+  const grandH = ancTotalH + modTotalH;
+  const grandA = ancTotalA + modTotalA;
+
+  const shields = {
+    h: militaryShields(allH, wonderMods),
+    a: militaryShields(allA, wonderMods)
+  };
+  const breakthroughs = {
+    h: heartBreakthroughs(allH, wonderMods),
+    a: heartBreakthroughs(allA, wonderMods)
+  };
+
+  return {
+    ancient: {pen5:{h:ancPen5H,a:ancPen5A}, total:{h:ancTotalH,a:ancTotalA}},
+    modern:  {food:{h:modFoodH,a:modFoodA,rawH:sumSuit(allH,"C", wonderMods),rawA:sumSuit(allA,"C", wonderMods)}, culture:{...cult}, pen10:{h:modPen10H,a:modPen10A}, total:{h:modTotalH,a:modTotalA}},
+    instant: {shields, breakthroughs, trigger: pub.instantWin || null},
+    grand: {h:grandH,a:grandA}
+  };
+}
+
+function fmtPts(x){ return (x>0?`+${x}`: String(x)); }
+function safeNum(x){ return (typeof x==="number" && isFinite(x)) ? x : 0; }
+
+function renderEndOverlay(){
+  const bd = computeFinalBreakdown();
+  const h = safeNum(bd.grand.h);
+  const a = safeNum(bd.grand.a);
+
+  const instant = STATE.pub.instantWin;
+  let winner = "Draw";
+  if (instant){
+    winner = instant.player===0 ? "Human" : "AI";
+  } else if (h>a) winner = "Human";
+  else if (a>h) winner = "AI";
+  else {
+    const tieOwner = wonderTieOwner(STATE.pub.taken[0], STATE.pub.taken[1]);
+    if (tieOwner===0) winner = "Human";
+    else if (tieOwner===1) winner = "AI";
+  }
+
+  const winnerText = winner==="Human" ? "Player wins" : (winner==="AI" ? "AI wins" : "Draw");
+  elEndWinnerLine.textContent = winnerText;
+  const instantText = instant ? (instant.type==="military"
+    ? ` — Immediate Military victory (Shields ${instant.myShields}-${instant.oppShields})`
+    : ` — Immediate Technological victory (${instant.breakthroughs} Breakthrough)`) : "";
+  elEndScoreLine.textContent = `Final: Human ${h} – AI ${a} (${winner})${instantText}`;
+
+  const anc = bd.ancient, mod = bd.modern;
+  const rowStyle = {
+    s: "background: rgba(239,68,68,.10); border-left: 3px solid rgba(239,68,68,.88);",
+    c: "background: rgba(34,197,94,.10); border-left: 3px solid rgba(34,197,94,.88);",
+    d: "background: rgba(56,189,248,.11); border-left: 3px solid rgba(56,189,248,.90);",
+    h: "background: rgba(250,204,21,.13); border-left: 3px solid rgba(250,204,21,.88);"
+  };
+  const row = (label, hh, aa, style)=>`
+    <tr style="${style}">
+      <td style="padding:8px 10px; font-weight:650;">${label}</td>
+      <td style="padding:8px 10px; text-align:right; font-variant-numeric: tabular-nums;">${fmtPts(hh)}</td>
+      <td style="padding:8px 10px; text-align:right; font-variant-numeric: tabular-nums;">${fmtPts(aa)}</td>
+    </tr>`;
+
+  elEndBody.innerHTML = `
+    <div class="box" style="background: rgba(0,0,0,.16);">
+      <table style="width:100%; border-collapse:separate; border-spacing:0 6px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:0 10px 2px; color: rgba(229,231,235,.74);"></th>
+            <th style="text-align:right; padding:0 10px 2px; color: rgba(229,231,235,.74);">Human</th>
+            <th style="text-align:right; padding:0 10px 2px; color: rgba(229,231,235,.74);">AI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${row("❺ Calamità antica", anc.pen5.h, anc.pen5.a, rowStyle.s)}
+          ${row("❿ Calamità moderna", mod.pen10.h, mod.pen10.a, rowStyle.s)}
+          ${row("♦ Cultura", mod.culture.h, mod.culture.a, rowStyle.d)}
+          ${row("♣ Cibo", mod.food.h, mod.food.a, rowStyle.c)}
+        </tbody>
+      </table>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12);">
+        <div style="font-weight:750;">Totale</div>
+        <div class="pill ok" style="border-color: rgba(34,197,94,.35); color: rgba(34,197,94,.92);">Human ${h}</div>
+        <div class="pill warn" style="border-color: rgba(245,158,11,.35); color: rgba(245,158,11,.92);">AI ${a}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* Close end overlay with Escape */
+document.addEventListener("keydown", (e)=>{
+  if (e.key==="Escape" && END_OPEN) closeEndOverlay();
+});
+
+
+/* === Tableau auto-fit (keeps the full grid visible without scrolling) === */
+let _fitRaf = 0;
+function scheduleFitTableau(){
+  if (_fitRaf) cancelAnimationFrame(_fitRaf);
+  _fitRaf = requestAnimationFrame(() => { _fitRaf = 0; fitTableau(); });
+}
+
+function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+
+function fitTableau(){
+  try{
+    if (!elTableau) return;
+    const bd = elTableau.parentElement; // .bd
+    if (!bd) return;
+
+    // Available space inside the tableau panel body (content box, excluding padding)
+    const bdStyle = getComputedStyle(bd);
+    const padX = (parseFloat(bdStyle.paddingLeft)||0) + (parseFloat(bdStyle.paddingRight)||0);
+    const padY = (parseFloat(bdStyle.paddingTop)||0) + (parseFloat(bdStyle.paddingBottom)||0);
+
+    let availW = bd.clientWidth - padX;
+    let availH = bd.clientHeight - padY;
+
+    // Subtract the <details> block if visible (desktop)
+    const det = bd.querySelector("details");
+    if (det && getComputedStyle(det).display !== "none"){
+      const r = det.getBoundingClientRect();
+      // +8px to account for the inline margin-top used in markup
+      availH -= (r.height + 8);
+    }
+
+    // Subtract tableau's own vertical padding
+    const tStyle = getComputedStyle(elTableau);
+    const tPadY = (parseFloat(tStyle.paddingTop)||0) + (parseFloat(tStyle.paddingBottom)||0);
+    availH -= tPadY;
+
+    // Safety
+    availW = Math.max(1, availW);
+    availH = Math.max(1, availH);
+
+    const layout = (typeof STATE !== "undefined" && STATE && STATE.pub) ? layoutForAge(STATE.pub.age) : layoutForAge("ancient");
+    const rows = layout.rows.length;
+    const rowMuls = layout.rowColMultipliers || [];
+    const maxSpan = Math.max(...layout.rows.map((r, ri)=>{
+      const muls = rowMuls[ri];
+      if (muls && muls.length){
+        return Math.max(...muls) - Math.min(...muls);
+      }
+      return Math.max(0, r.length - 1);
+    }));
+    const slotsAcross = Math.max(1, maxSpan + 1);
+    const maxCols = slotsAcross;
+    if (!rows) return;
+
+    // Base gaps (we will scale them with the card size)
+    const baseColGap = 8;
+    const baseRowGap = 6;
+
+    // Card aspect ratio (height/width)
+    const ratio = 96/72;
+
+    // Width-first fit: maximize card size to fill the row width,
+    // then tighten row gap / card width only if height overflows.
+    const wByWidth_1 = (availW - (maxCols - 1) * baseColGap) / maxCols;
+    let cardW = Math.floor(wByWidth_1);
+    // Keep it usable but allow shrinking for tiny screens.
+    // Max size scales slightly with viewport width (more relative to device size).
+    const viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const maxCardW = (viewportW <= 420) ? 92 : (viewportW <= 540 ? 96 : 94);
+    cardW = clamp(cardW, 38, maxCardW);
+
+    // Scale gaps with the card size and re-lock card width to the available width
+    let scale = clamp(cardW / 72, 0.55, 1.15);
+    let colGap = Math.round(baseColGap * scale);
+    let rowGap = Math.round(baseRowGap * scale);
+    cardW = Math.floor((availW - (maxCols - 1) * colGap) / maxCols);
+    cardW = clamp(cardW, 38, maxCardW);
+
+    // Height safety pass:
+    // 1) reduce row gap first,
+    // 2) then reduce card width if still needed.
+    const totalHeight = () => (rows * Math.round(cardW * ratio)) + ((rows - 1) * rowGap);
+    const minRowGap = 2;
+    if (totalHeight() > availH){
+      const rowGapByHeight = Math.floor((availH - rows * Math.round(cardW * ratio)) / Math.max(1, rows - 1));
+      rowGap = clamp(rowGapByHeight, minRowGap, rowGap);
+    }
+    if (totalHeight() > availH){
+      const maxCardH = (availH - (rows - 1) * rowGap) / rows;
+      const wByHeight = Math.floor(maxCardH / ratio);
+      cardW = clamp(Math.min(cardW, wByHeight), 38, maxCardW);
+
+      // keep horizontal fit coherent after height-limited shrink
+      scale = clamp(cardW / 72, 0.55, 1.15);
+      colGap = Math.round(baseColGap * scale);
+      cardW = Math.floor((availW - (maxCols - 1) * colGap) / maxCols);
+      cardW = clamp(cardW, 38, maxCardW);
+
+      // final hard guard if a very short viewport still overflows
+      if (totalHeight() > availH){
+        const maxCardH2 = (availH - (rows - 1) * minRowGap) / rows;
+        cardW = clamp(Math.floor(maxCardH2 / ratio), 38, maxCardW);
+        rowGap = minRowGap;
+      }
+    }
+
+    const cardH = Math.round(cardW * ratio);
+    const rowStepRatio = clamp((cardH + rowGap) / Math.max(1, cardH), 0.72, 1.15);
+    const rad = clamp(Math.round(cardW * 0.19), 10, 18);
+
+    const root = document.documentElement;
+    root.style.setProperty("--cardW", `${cardW}px`);
+    root.style.setProperty("--cardH", `${cardH}px`);
+    root.style.setProperty("--cardRad", `${rad}px`);
+    root.style.setProperty("--colGap", `${colGap}px`);
+    root.style.setProperty("--rowGap", `${rowGap}px`);
+    root.style.setProperty("--rowStepRatio", `${rowStepRatio}`);
+  }catch(e){
+    // Never break the game UI because of fitting logic
+    // (keep silent; debugging can be done via DevTools)
+  }
+}
+
+// React to viewport changes (mobile address bar/orientation) and first paint
+window.addEventListener("resize", scheduleFitTableau, {passive:true});
+if (window.visualViewport){
+  window.visualViewport.addEventListener("resize", scheduleFitTableau, {passive:true});
+}
+document.addEventListener("fullscreenchange", scheduleFitTableau);
+
+
+
+function playerName(p){ return p===0 ? "Human" : "AI"; }
+function cardLabel(card){
+  if (!card) return "??";
+  if (card.kind==="king") return "K";
+  const v = (card.value===1) ? "A" : String(card.value);
+  return v + SUIT_ICON[card.suit];
+}
+function shortCardLabel(card){
+  if (!card) return "??";
+  if (card.kind==="king") return "K";
+  const v = (card.value===1) ? "A" : String(card.value);
+  return v + SUIT_ICON[card.suit];
+}
+function clearLog(){ elLog.textContent=""; }
+function logLine(s){ elLog.textContent += s + "\n"; elLog.scrollTop = elLog.scrollHeight; }
+
+const btnLogOpen = document.getElementById("logOpenBtn");
+const btnLogClose = document.getElementById("logCloseBtn");
+const elLogBackdrop = document.getElementById("logBackdrop");
+
+function openLogOverlay(){
+  document.body.classList.add("logOpen");
+}
+function closeLogOverlay(){
+  document.body.classList.remove("logOpen");
+}
+
+if (btnLogOpen) btnLogOpen.addEventListener("click", ()=> openLogOverlay());
+if (btnLogClose) btnLogClose.addEventListener("click", ()=> closeLogOverlay());
+if (elLogBackdrop) elLogBackdrop.addEventListener("click", ()=> closeLogOverlay());
+
+document.addEventListener("keydown", (e)=>{
+  if (e.key==="Escape" && document.body.classList.contains("logOpen")) closeLogOverlay();
+});
+
+function shouldPromptModernWonder(){
+  if (!STATE) return false;
+  if (STATE.pub && STATE.pub.kingWonder) return false;
+  return Engine.canUseModernSwap(STATE.pub, 0);
+}
+
+
+btnModalYes.addEventListener("click", ()=>{
+  if (!STATE) return;
+  const r = Engine.useModernSwap(STATE, 0);
+  if (r.ok) logLine("Human discards the Leader to become first in the Modern Age.");
+  else logLine("Leader: " + r.msg);
+  closeModal();
+  render();
+});
+
+btnModalNo.addEventListener("click", ()=>{
+  if (!STATE) return;
+  // decline: the choice window closes and the normal Modern Age continues
+  STATE.pub.modernSwapStillAvailable = false;
+  closeModal();
+  logLine("Choice: you are not discarding the Leader now (order unchanged).");
+  render();
+  maybeAIMove();
+});
+
+btnNew.addEventListener("click", ()=>{
+  const starter = document.getElementById("whoStarts").value;
+  STATE = Engine.newGame(starter);
+  LAST_AI_PICK_ID = null;
+  END_SHOWN = false; closeEndOverlay(); closeLogOverlay();
+  clearLog();
+  logLine(`New game. Starting: ${playerName(STATE.pub.currentPlayer)}.`);
+  render();
+  maybeAIMove();
+});
+
+btnLeader.addEventListener("click", ()=>{
+  if (!STATE) return;
+  if (STATE.pub.ended) return;
+  if (MODAL_OPEN) return;
+
+  const r = Engine.useJokerDouble(STATE);
+  if (!r.ok) logLine("Leader: " + r.msg);
+  else logLine("Human uses the Leader: 2 picks this turn.");
+  render();
+  maybeAIMove();
+});
+
+if (btnLeaderSide) btnLeaderSide.addEventListener("click", ()=>{ if (btnLeader) btnLeader.click(); });
+
+function summarize(cards){
+  const s = militaryShields(cards);
+  const d = bestDiamondStraight(cards);
+  const c = sumSuit(cards,"C");
+  const h = heartBreakthroughs(cards);
+  const five = countValue(cards,5);
+  const ten = countValue(cards,10);
+  return `Total ${cards.length} | ♠ Shields ${s} | ♣ ${c} | ♦ best ${Math.max(0,(d.len>=2?d.len:0))} (high ${d.maxCard}) | ♥ Breakthrough ${h} | 5=${five} | 10=${ten}`;
+}
+
+
+function runTokens(values, dashMinLen, vpSelector=null){
+  const set = new Set(values);
+  const runs = circularRuns(set);
+
+  const groupRuns = runs.filter(r => r.len >= dashMinLen);
+
+  const inGroup = new Set();
+  for(const r of groupRuns){ for(const v of r.cards) inGroup.add(v); }
+
+  const vpKeys = new Set();
+  if (vpSelector instanceof Set){
+    for (const k of vpSelector) vpKeys.add(k);
+  } else if (typeof vpSelector === "number"){
+    const ranked = groupRuns.slice().sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard));
+    for(const r of ranked.slice(0, vpSelector)) vpKeys.add(r.cards.join(","));
+  } else if (vpSelector === true){
+    for(const r of groupRuns) vpKeys.add(r.cards.join(","));
+  }
+
+  const singles = [...set]
+    .filter(v => !inGroup.has(v))
+    .sort((a,b)=>a-b)
+    .map(v => ({ key: v, text: valueLabel(v), vp: false }));
+
+  const groups = groupRuns
+    .slice()
+    .sort((a,b)=> (a.cards[0]-b.cards[0]))
+    .map(r => ({
+      key: r.cards[0],
+      text: r.cards.map(valueLabel).join("-"),
+      vp: vpKeys.has(r.cards.join(","))
+    }));
+
+  return singles.concat(groups).sort((a,b)=>a.key-b.key);
+}
+
+function renderHands(){
+  const pub = STATE.pub;
+  const h = pub.taken[0];
+  const a = pub.taken[1];
+
+  elCompareBody.innerHTML = "";
+
+  const wonderMods = [0,1].map(p=>{
+    const wm = pub.wonderMark?.[p] || {};
+    return {cardId: wm.cardId || null, delta: Number(wm.delta)||0};
+  });
+
+  const cult = cultureContestVP(h, a, wonderMods);
+  const hCultKeys = new Set();
+  const aCultKeys = new Set();
+  for (const g of (cult.bestGroup||[])){
+    const k = (g.run && g.run.cards) ? g.run.cards.join(",") : "";
+    if (!k) continue;
+    if (g.owner===0) hCultKeys.add(k);
+    if (g.owner===1) aCultKeys.add(k);
+  }
+  for (const g of (cult.secondGroup||[])){
+    const k = (g.run && g.run.cards) ? g.run.cards.join(",") : "";
+    if (!k) continue;
+    if (g.owner===0) hCultKeys.add(k);
+    if (g.owner===1) aCultKeys.add(k);
+  }
+
+  function heartPairTokens(cards, wonderModsLocal){
+    const set = valuesSet(cards,"H", wonderModsLocal);
+    const pairs = [[1,2],[3,4],[5,6],[7,8],[9,10]];
+    return pairs.map(([x,y])=>{
+      const hit = set.has(x) && set.has(y);
+      return { text:`${valueLabel(x)}-${valueLabel(y)}`, vp:hit };
+    });
+  }
+
+  const addChip = (parent, text, opts={}) => {
+    const vp = !!opts.vp;
+    const marked = !!opts.marked;
+    const wonder = !!opts.wonder;
+    const lastAi = !!opts.lastAi;
+    const chip = document.createElement("div");
+    chip.className = vp ? "chip vp" : "chip";
+    if (marked) chip.classList.add("marked");
+    if (wonder) chip.classList.add("wonder");
+    if (lastAi) chip.classList.add("lastAi");
+    chip.textContent = text;
+    parent.appendChild(chip);
+  };
+
+  const buildSuitData = (cards, suit, isHuman) => {
+    const wm = pub.wonderMark?.[isHuman ? 0 : 1];
+    const markedCard = wm && wm.cardId ? cards.find(c=>c && c.id===wm.cardId) : null;
+
+    if (suit === "S"){
+      const vals = suitValues(cards,"S", wonderMods);
+      const total = militaryShields(cards, wonderMods);
+      return { score: total, headline: `${total} Shields`, chips: vals.map(valueLabel), markedCard , isHuman };
+    }
+    if (suit === "C"){
+      const vals = suitValues(cards,"C", wonderMods);
+      const total = sumSuit(cards,"C", wonderMods);
+      const vp = Math.floor(total/5);
+      return { score: total, headline: `${total} (${vp} VP)`, chips: vals.map(valueLabel), markedCard , isHuman };
+    }
+    if (suit === "H"){
+      const total = heartBreakthroughs(cards, wonderMods);
+      const tokens = heartPairTokens(cards, wonderMods);
+      return { headline: `${total} Breakthrough`, tokens, markedCard , isHuman };
+    }
+
+    const vals = suitValues(cards,"D", wonderMods);
+    const vpKeys = isHuman ? hCultKeys : aCultKeys;
+    const tokens = runTokens(vals, 2, (vpKeys && vpKeys.size) ? vpKeys : null);
+    return { tokens, markedCard , isHuman };
+  };
+
+  const renderBattleCell = (td, own, suit) => {
+    const cell = document.createElement("div");
+    cell.className = "battleCell";
+
+    if (own.headline){
+      const head = document.createElement("div");
+      head.className = "battleHead";
+      const value = document.createElement("div");
+      value.className = "battleValue";
+      value.textContent = own.headline;
+      head.appendChild(value);
+      cell.appendChild(head);
+    }
+
+    const values = document.createElement("div");
+    values.className = "suitValues";
+    if (own.tokens){
+      if (own.tokens.length===0) addChip(values, "—");
+      else for (const t of own.tokens) addChip(values, t.text, {vp:t.vp});
+    } else {
+      const chips = own.chips || [];
+      if (chips.length===0) addChip(values, "—");
+      else for (const c of chips) addChip(values, c);
+    }
+
+    const lastAiCard = (!own.isHuman && LAST_AI_PICK_ID) ? _findCardById(LAST_AI_PICK_ID) : null;
+    if (lastAiCard && lastAiCard.kind==="card" && lastAiCard.suit===suit){
+      addChip(values, `Last AI: ${cardLabel(lastAiCard)}`, {lastAi:true});
+    }
+
+    if (own.markedCard && own.markedCard.suit === suit){
+      const wm = pub.wonderMark?.[own===hData[suit] ? 0 : 1];
+      const deltaVal = (typeof wm?.delta === "number") ? wm.delta : 0;
+      const deltaText = deltaVal===0 ? "0" : (deltaVal>0 ? `+${deltaVal}` : String(deltaVal));
+      const stateText = wm?.finalChoicePending ? "pending" : `final ${deltaText}`;
+      addChip(values, `★ ${cardLabel(own.markedCard)} (${stateText})`, {marked:true});
+    }
+
+    cell.appendChild(values);
+    td.appendChild(cell);
+  };
+
+  const suits = [
+    { key:"S", label:"♠ Military (Shields)", cls:"suitS" },
+    { key:"C", label:"♣ Food", cls:"suitC" },
+    { key:"H", label:"♥ Technology (Pairs)", cls:"suitH" },
+    { key:"D", label:"♦ Culture", cls:"suitD" }
+  ];
+
+  const hData = {};
+  const aData = {};
+  for (const s of suits){
+    hData[s.key] = buildSuitData(h, s.key, true);
+    aData[s.key] = buildSuitData(a, s.key, false);
+  }
+
+  for (const s of suits){
+    const tr = document.createElement("tr");
+    tr.className = `compareRow ${s.cls}`;
+
+    const labelTd = document.createElement("td");
+    const cat = document.createElement("div");
+    cat.className = `catCell ${s.cls}`;
+    cat.textContent = s.label;
+    labelTd.appendChild(cat);
+
+    const humanTd = document.createElement("td");
+    renderBattleCell(humanTd, hData[s.key], s.key);
+
+    const aiTd = document.createElement("td");
+    renderBattleCell(aiTd, aData[s.key], s.key);
+
+    tr.appendChild(labelTd);
+    tr.appendChild(humanTd);
+    tr.appendChild(aiTd);
+    elCompareBody.appendChild(tr);
+  }
+
+  const tr = document.createElement("tr");
+  tr.className = "compareRow wonders";
+  const labelTd = document.createElement("td");
+  const cat = document.createElement("div");
+  cat.className = "catCell wonders";
+  cat.textContent = "K Wonders";
+  labelTd.appendChild(cat);
+
+  const humanTd = document.createElement("td");
+  const aiTd = document.createElement("td");
+
+  const buildWondersCell = (td, cards) => {
+    const cell = document.createElement("div");
+    cell.className = "battleCell";
+    const kings = cards.filter(c=>c && c.kind==="king");
+
+    const values = document.createElement("div");
+    values.className = "suitValues";
+    if (kings.length===0) addChip(values, "—");
+    else {
+      const order = {S:0, D:1, H:2, C:3};
+      kings.sort((x,y)=> (order[x.suit]-order[y.suit]));
+      for (const k of kings) addChip(values, cardLabel(k), {wonder:true});
+    }
+    cell.appendChild(values);
+    td.appendChild(cell);
+  };
+
+  buildWondersCell(humanTd, h);
+  buildWondersCell(aiTd, a);
+  tr.appendChild(labelTd);
+  tr.appendChild(humanTd);
+  tr.appendChild(aiTd);
+  elCompareBody.appendChild(tr);
+}
+
+function render(){
+  // Layout mode: hide the top header while a game is in progress.
+  const _playing = !!(STATE && STATE.pub && !STATE.pub.ended);
+  document.body.classList.toggle("playing", _playing);
+
+  if (!STATE){
+    elStatusLine.textContent="Press “New game”.";
+    elTableau.innerHTML="";
+    if (elCompareBody) elCompareBody.innerHTML = "";
+    if (btnLeaderSide) btnLeaderSide.disabled = true;
+    return;
+  }
+  const pub = STATE.pub;
+
+  syncKingOverlay();
+
+  if (!MODAL_OPEN && shouldPromptModernWonder()) {
+    openModal();
+  }
+
+  // AI pre-Modern choice (symmetry): if the AI is the second player in Modern and the window is open, it decides now (before any Modern pick).
+  if (!MODAL_OPEN && Engine.canUseModernSwap(pub, 1)) {
+    // Simple heuristic: use the swap if behind on points, or if the level is MonteCarlo.
+    const behind = (pub.score.ai < pub.score.human);
+    const isMC = (document.getElementById("aiLevel")?.value === "mc");
+    if (behind || isMC) {
+      const r = Engine.useModernSwap(STATE, 1);
+      if (r.ok) logLine("AI discards the Leader to become first in the Modern Age.");
+    }
+    // In any case we close the window: the moment has passed.
+    pub.modernSwapStillAvailable = false;
+  }
+
+
+  elAgePill.textContent = (pub.age==="ancient") ? "Ancient Age" : "Modern Age";
+  elTurnPill.textContent = "Turn: " + playerName(pub.currentPlayer);
+  elTurnPill.classList.toggle("turn-ai", pub.currentPlayer===1 && !pub.ended);
+  const aiLeaderStatus = pub.jokerUsed[1] ? "Used" : "Not Used";
+  elActionPill.textContent = "AI Leader: " + aiLeaderStatus;
+  elScorePill.textContent = `Score: Human ${pub.score.human} – AI ${pub.score.ai}`;
+
+  // End-of-game UI (presentation only)
+  if (pub.ended && !END_SHOWN){
+    END_SHOWN = true;
+    closeLogOverlay();
+    renderEndOverlay();
+    openEndOverlay();
+  }
+
+  const remaining = pub.slots.filter(s=>!s.removed).length;
+  const jokerH = pub.jokerUsed[0] ? "used" : "available";
+  const jokerA = pub.jokerUsed[1] ? "used" : "available";
+  const swap = (pub.age==="modern" && pub.modernSwapStillAvailable) ? "Leader choice (turn order) available" : "Leader choice (turn order) n/a";
+
+  elStatusLine.innerHTML = `
+    <span class="pill">Cards left: ${remaining}</span>
+    <span class="pill">Human Leader: ${jokerH}</span>
+    <span class="pill">AI Leader: ${jokerA}</span>
+    <span class="pill">${swap}</span>
+  `;
+
+
+  // Leader (effect: 2 picks this turn)
+  btnLeader.disabled = pub.ended || pub.currentPlayer!==0 || ( !Engine.canUseJokerDouble(pub,0) );
+  if (btnLeaderSide) btnLeaderSide.disabled = btnLeader.disabled;
+
+  // tableau render (ordine visivo dal layout ufficiale)
+  // Importantissimo: aggiorna prima le CSS vars (cardW/cardH/colGap) e poi calcola la geometria
+  const layout = layoutForAge(pub.age);
+  fitTableau();
+  
+  const _metrics = getTableauMetrics();
+  const TABLEAU_GEOM = computeTableauGeometry(_metrics, layout);
+  
+  elTableau.innerHTML="";
+  elTableau.style.width = TABLEAU_GEOM.width + "px";
+  elTableau.style.height = TABLEAU_GEOM.height + "px";
+  const showIdx = cbDebug.checked;
+
+  for(const row of layout.rows){
+    for(const idx of row){
+      const s = pub.slots[idx];
+
+      const el = document.createElement("div");
+      el.className="card";
+      if (!s.removed) el.classList.add("clickable");
+      if (s.removed) el.classList.add("removed");
+      const isLastAiGhost = (s.removed && LAST_AI_PICK_ID && s.card && s.card.id===LAST_AI_PICK_ID && pub.currentPlayer===0);
+      if (isLastAiGhost) el.classList.add("lastAiGhost");
+      if (s.faceDown && !s.removed) el.classList.add("faceDown");
+
+      if (!s.removed && !s.faceDown && s.card){
+        if (s.card.kind==="king") el.classList.add("wonder");
+        else if (s.card.suit) el.classList.add("suit" + s.card.suit);
+      }
+
+
+      const accessible = (!s.removed && !s.faceDown && Engine.isAccessible(pub, idx));
+      if (accessible) el.classList.add("accessible");
+      const blocked = (!s.removed && !s.faceDown && !accessible);
+      if (blocked) el.classList.add("blocked");
+
+      const big = document.createElement("div");
+      big.className="big";
+      big.textContent = (s.removed && !isLastAiGhost) ? "" : (s.faceDown ? "" : cardLabel(s.card));
+
+      const small = document.createElement("div");
+      small.className="small";
+      small.textContent = (s.removed && !isLastAiGhost) ? "" : (s.faceDown ? "" : (s.card && s.card.kind==="king" ? "WOND" : (SUIT_ABBR[s.card.suit] || SUIT_NAME[s.card.suit] || "")));
+
+      const cornerL = document.createElement("div");
+      cornerL.className="cornerL";
+      cornerL.textContent = (showIdx && !s.removed) ? String(idx) : "";
+
+      el.appendChild(big);
+      el.appendChild(cornerL);
+      el.appendChild(small);
+
+      el.addEventListener("click", ()=>{
+        if (MODAL_OPEN) return;
+        if (!STATE) return;
+        if (STATE.pub.kingWonder) return;
+        if (STATE.pub.currentPlayer!==0) return;
+        if (STATE.pub.ended) return;
+        if (s.removed || s.faceDown) return;
+        if (!Engine.isAccessible(STATE.pub, idx)) return;
+
+        const beforeAge = STATE.pub.age;
+        LAST_AI_PICK_ID = null;
+        const r = Engine.take(STATE, idx);
+        if (!r.ok){ logLine(r.msg); render(); return; }
+
+        logLine(`Human takes ${cardLabel(s.card)}.`);
+
+        if (r.pendingKingWonder){
+          const kw = STATE.pub.kingWonder;
+          if (kw){
+            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final card and value (-2/-1/0/+1/+2).`);
+          }
+        } else {
+          if (r.flipped>0) logLine(`${r.flipped} card(s) revealed.`);
+
+          if (r.endedAge && beforeAge==="ancient"){
+            logLine(`End of the Ancient Age. The Modern Age starts now: first player ${playerName(STATE.pub.currentPlayer)}.`);
+            if (STATE.pub.modernSwapStillAvailable) logLine("Note: the Leader choice to change turn order is available to the second player (before any Modern pick).");
+          }
+          if (r.endedGame){
+            logLine(`End of the Modern Age. Final score: Human ${STATE.pub.score.human} – AI ${STATE.pub.score.ai}.`);
+          }
+        }
+
+        render();
+        maybeAIMove();
+      });
+
+      const p = TABLEAU_GEOM.pos[idx] || {x:0,y:0,row:0,col:0};
+      el.style.left = p.x + "px";
+      el.style.top = p.y + "px";
+		const z = (p.row || 0) * 10 + (p.col || 0) + (accessible ? 100 : 0);
+		el.style.zIndex = String(z);
+
+      elTableau.appendChild(el);
+    }
+  }
+
+  renderHands();
+}
+
+function maybeAIMove(){
+  if (!STATE) return;
+  if (STATE.pub.ended) return;
+  if (STATE.pub.kingWonder) return;
+  if (MODAL_OPEN || shouldPromptModernWonder()) return;
+  if (STATE.pub.currentPlayer!==1) return;
+
+  setTimeout(()=>{
+    if (!STATE || STATE.pub.ended || STATE.pub.currentPlayer!==1) return;
+
+    const decisionStart = performance.now();
+    const mv = aiChoose(STATE, {deadline: decisionStart + AI_MOVE_MAX_MS});
+
+    if (mv.type==="modernSwap"){
+      const r = Engine.useModernSwap(STATE, 1);
+      if (r.ok) logLine("AI discards the Leader to become first in the Modern Age.");
+      render();
+      // continue (AI may have the next move if it is now first and it is still its turn)
+      maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="leader"){
+      const r = Engine.useJokerDouble(STATE);
+      if (r.ok) logLine("AI uses the Leader: 2 picks this turn.");
+      render();
+      maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="take"){
+      const sl = STATE.pub.slots[mv.idx];
+      const beforeAge = STATE.pub.age;
+      const r = Engine.take(STATE, mv.idx);
+      if (r.ok){
+        LAST_AI_PICK_ID = sl && sl.card ? sl.card.id : null;
+        logLine(`AI takes ${cardLabel(sl.card)}.`);
+
+        if (r.pendingKingWonder){
+          const kw = STATE.pub.kingWonder;
+          if (kw){
+            if (kw.phase==="finalChoice") logLine(`King Wonder: ${playerName(kw.builder)} chooses final card and value (-2/-1/0/+1/+2).`);
+          }
+        } else {
+          if (r.flipped>0) logLine(`${r.flipped} card(s) revealed.`);
+          if (r.endedAge && beforeAge==="ancient"){
+            logLine(`End of the Ancient Age. The Modern Age starts now: first player ${playerName(STATE.pub.currentPlayer)}.`);
+          }
+          if (r.endedGame){
+            logLine(`End of the Modern Age. Final score: Human ${STATE.pub.score.human} – AI ${STATE.pub.score.ai}.`);
+          }
+        }
+      } else {
+        logLine("AI: " + r.msg);
+      }
+      render();
+      // se AI ha ancora una presa (Joker), continua
+      if (STATE.pub.currentPlayer===1) maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="kingFinal"){
+      const r = Engine.chooseKingWonder(STATE, {cardId: mv.cardId, delta: mv.delta}, true);
+      if (!r.ok) logLine("AI (Wonder): " + r.msg);
+      render();
+      if (STATE.pub.currentPlayer===1) maybeAIMove();
+      return;
+    }
+
+    if (mv.type==="pass"){
+      STATE.pub.picksLeftThisTurn = 1;
+      STATE.pub.currentPlayer = 0;
+      logLine("AI passes (no legal actions). Turn to Human.");
+      render();
+      return;
+    }
+  }, 0);
+}
+
+// init
+STATE = Engine.newGame("human");
+clearLog();
+logLine("Ready. Press “New game” to start with the selected settings.");
+render();
+scheduleFitTableau();
+
+window.MirusCore = {
+  Engine,
+  aiChoose,
+  chooseMoveForPlayer,
+  enumerateMoves,
+  quickEval,
+  cloneEngineStateForSim,
+  totalScoring,
+  layoutForAge,
+  cardLabel,
+  SUIT_NAME
+};
+
+
+</script>
+
+</body>
+</html>
