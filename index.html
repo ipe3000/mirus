@@ -91,7 +91,6 @@
     /* Accessible (selectable) cards: brighter and visually "on top" */
     .card.accessible{
       box-shadow:0 0 0 4px rgba(145, 126, 185, 0.95), 0 0 0 7px rgb(145, 126, 185, 0.45), 0 18px 34px rgba(0,0,0,.55);
-      z-index: 4;
     }
     .card.accessible::before{
       content:"";
@@ -106,7 +105,6 @@
       filter: saturate(.85) brightness(.90);
       box-shadow: 0 6px 12px rgba(0,0,0,.35);
       transform: translateY(2px) scale(.985);
-      z-index: 1;
       cursor: not-allowed;
     }
     .card.blocked::after{
@@ -3845,7 +3843,9 @@ function render(){
       const p = TABLEAU_GEOM.pos[idx] || {x:0,y:0,row:0,col:0};
       el.style.left = p.x + "px";
       el.style.top = p.y + "px";
-		const z = (p.row || 0) * 10 + (p.col || 0) + (accessible ? 100 : 0);
+		// Layering contract: lower rows must always appear in front (higher z-index).
+		// Keep accessibility visual-only (CSS), not depth-changing, to avoid broken overlaps.
+		const z = ((p.row || 0) + 1) * 100 + (p.col || 0);
 		el.style.zIndex = String(z);
 
       elTableau.appendChild(el);
