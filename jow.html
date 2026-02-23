@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jokers of Wonders</title>
+  <style>
+    :root{
+      --bg:#101522; --panel:#1b2436; --panel2:#232f46; --text:#eef2ff; --muted:#b7c2e6;
+      --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --accent:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif; background:radial-gradient(circle at top,#1c2740,#0b1020 60%); color:var(--text)}
+    header{padding:10px 14px; border-bottom:1px solid #334155; background:#0b1020cc; position:sticky; top:0; z-index:20; backdrop-filter:blur(5px)}
+    h1{margin:0;font-size:18px}
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between}
+    button{background:#1f2c45; border:1px solid #4b5d87; color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer}
+    button.primary{background:#1d4ed8; border-color:#2563eb}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    main{max-width:1200px; margin:0 auto; padding:12px; display:grid; gap:12px; grid-template-columns:1.3fr .7fr}
+    @media (max-width: 980px){main{grid-template-columns:1fr}}
+    .panel{background:#111a2dcc; border:1px solid #334155; border-radius:14px; overflow:hidden}
+    .hd{padding:10px 12px; border-bottom:1px solid #334155; font-weight:700; display:flex; justify-content:space-between; align-items:center; gap:8px}
+    .bd{padding:10px}
+    .status{display:grid; gap:8px; grid-template-columns:repeat(2,minmax(0,1fr)); font-size:13px}
+    .pill{background:#0f172a; border:1px solid #334155; border-radius:999px; padding:3px 8px; color:var(--muted); font-size:12px}
+    .tableauWrap{overflow:auto}
+    .tableau{position:relative; margin:0 auto}
+    .card{position:absolute; width:78px; height:110px; border-radius:12px; border:1px solid #d1d5db33; box-shadow:0 8px 20px #0008; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s}
+    .card .mini{font-size:11px; opacity:.82}
+    .faceDown{background:linear-gradient(145deg,#6b7280,#374151); color:#d1d5db}
+    .open{cursor:pointer}
+    .open:hover{transform:translateY(-2px)}
+    .accessible{outline:3px solid #8b5cf6aa}
+    .blocked{filter:brightness(.8) saturate(.8); cursor:not-allowed}
+    .removed{display:none}
+    .sS{background:linear-gradient(#dbeafe,#bfdbfe); color:#111827}
+    .sH{background:linear-gradient(#fee2e2,#fecaca); color:#7f1d1d}
+    .sD{background:linear-gradient(#ffedd5,#fed7aa); color:#9a3412}
+    .sC{background:linear-gradient(#dcfce7,#bbf7d0); color:#14532d}
+    .collections{display:grid; gap:8px}
+    .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
+    .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
+    .cardsMini{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px}
+    .m{font-size:11px; border:1px solid #475569; padding:2px 5px; border-radius:6px; background:#1e293b}
+    .log{height:220px; overflow:auto; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:8px; font-size:12px}
+    .line{margin:0 0 5px; color:#dbeafe}
+    dialog{border:1px solid #334155; border-radius:12px; padding:14px; background:#0f172a; color:var(--text); width:min(560px,92vw)}
+    .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>Jokers of Wonders — simulatore completo</h1>
+    <div class="row">
+      <button class="primary" id="newGameBtn">Nuova partita</button>
+      <span class="pill" id="agePill"></span>
+      <span class="pill" id="turnPill"></span>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="panel">
+    <div class="hd"><span>Tableau</span><span id="tableauInfo" class="pill"></span></div>
+    <div class="bd tableauWrap"><div id="tableau" class="tableau"></div></div>
+  </section>
+  <section class="panel">
+    <div class="hd">Giocatori</div>
+    <div class="bd">
+      <div class="status" id="statusGrid"></div>
+      <div class="collections" id="collections"></div>
+      <h3>Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="modal"></dialog>
+
+<script>
+const SUITS=["S","D","H","C"];
+const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
+const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
+const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
+const AGE_SHAPES={ancient:[2,4,7,6,5], modern:[2,5,8,7,6]};
+let G=null;
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function makeDeck(){
+  const cards=[]; let id=0;
+  for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}}
+  return cards;
+}
+function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
+function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
+function cardClass(c){return `s${c.suit}`;}
+
+function layout(shape){
+  const w=78,h=110,v=42,hStep=42;
+  const widths=shape.map(n=>w+(n-1)*hStep);
+  const maxW=Math.max(...widths); const pos=[]; let idx=0;
+  for(let r=0;r<shape.length;r++){
+    const n=shape[r], rowW=widths[r], x0=(maxW-rowW)/2;
+    for(let c=0;c<n;c++) pos[idx++]={row:r,col:c,x:x0+c*hStep,y:r*v};
+  }
+  return {w,h,pos,width:maxW,height:(shape.length-1)*v+h};
+}
+
+function buildTableau(age,deck){
+  const shape=AGE_SHAPES[age], geom=layout(shape); const slots=[];
+  for(let i=0;i<shape.reduce((a,b)=>a+b,0);i++){
+    const p=geom.pos[i];
+    const card=deck.pop();
+    const faceDown=(p.row%2===1);
+    slots.push({card,removed:false,faceDown,row:p.row,col:p.col,x:p.x,y:p.y});
+  }
+  return {slots,geom};
+}
+function overlaps(a,b){
+  return !(a.x+78<=b.x||b.x+78<=a.x||a.y+110<=b.y||b.y+110<=a.y);
+}
+function accessibility(slots){
+  return slots.map((s,i)=>{
+    if(s.removed) return false;
+    for(let j=0;j<slots.length;j++){
+      if(i===j) continue;
+      const t=slots[j];
+      if(t.removed) continue;
+      if(t.row>s.row && overlaps(s,t)) return false;
+    }
+    return true;
+  });
+}
+function flipNew(slots,acc){
+  let f=0;
+  for(let i=0;i<slots.length;i++) if(!slots[i].removed && slots[i].faceDown && acc[i]){slots[i].faceDown=false; f++;}
+  return f;
+}
+function swords(cards){
+  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4"].includes(c.rank)?1:["5","6","7","8"].includes(c.rank)?2:3),0);
+}
+function techPairs(cards){
+  const hs=cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]).sort((a,b)=>a-b);
+  let pairs=0,run=1;
+  for(let i=1;i<hs.length;i++){
+    if(hs[i]===hs[i-1]+1) run++;
+    else if(hs[i]!==hs[i-1]){pairs+=Math.floor(run/2); run=1;}
+  }
+  if(hs.length) pairs+=Math.floor(run/2);
+  return pairs;
+}
+function foodVP(cards){
+  const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
+  return Math.floor(v/5);
+}
+function hasFourKings(cards){
+  return ["S","D","H","C"].every(s=>cards.some(c=>c.suit===s&&c.rank==="K"));
+}
+function diamondSequences(cards){
+  const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank]));
+  if(owned.size<2) return [];
+  const present=i=>owned.has(i===0?13:i===14?1:i);
+  if(owned.size===13) return [{length:13,high:13}];
+  const seq=[];
+  for(let i=1;i<=13;i++){
+    if(!owned.has(i)) continue;
+    if(present(i-1)) continue;
+    let len=1,cur=i;
+    while(present(cur+1)){len++;cur=cur===13?1:cur+1; if(cur===i) break;}
+    if(len>=2){
+      let high=i;
+      for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;}
+      seq.push({length:len,high});
+    }
+  }
+  return seq;
+}
+function scoreGame(){
+  const p0=G.players[0].cards,p1=G.players[1].cards;
+  const s0=swords(p0),s1=swords(p1);
+  const tech0=techPairs(p0), tech1=techPairs(p1);
+  let vp0=0,vp1=0;
+  if(s0>s1) vp0+=5; else if(s1>s0) vp1+=5;
+  vp0+=foodVP(p0)+tech0*2; vp1+=foodVP(p1)+tech1*2;
+  if(hasFourKings(p0)) vp0-=5; if(hasFourKings(p1)) vp1-=5;
+
+  const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
+    .sort((a,b)=>b.length-a.length || b.high-a.high);
+  const awards=[12,6,3];
+  for(let i=0;i<Math.min(awards.length,seqs.length);i++){ if(seqs[i].owner===0) vp0+=awards[i]; else vp1+=awards[i]; }
+  return {vp:[vp0,vp1], detail:{s:[s0,s1],tech:[tech0,tech1],seqs}};
+}
+function checkSupremacy(){
+  const [a,b]=G.players.map(p=>p.cards);
+  const sw=[swords(a),swords(b)], tp=[techPairs(a),techPairs(b)];
+  if(tp[0]>=4) return {winner:0,reason:"Supremazia Tecnologica (4+ Breakthrough)"};
+  if(tp[1]>=4) return {winner:1,reason:"Supremazia Tecnologica (4+ Breakthrough)"};
+  if(sw[0]-sw[1]>10) return {winner:0,reason:"Supremazia Militare (>10 Swords di vantaggio)"};
+  if(sw[1]-sw[0]>10) return {winner:1,reason:"Supremazia Militare (>10 Swords di vantaggio)"};
+  return null;
+}
+
+function newGame(){
+  const base=shuffle(makeDeck());
+  const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient"));
+  const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
+  const first=Math.random()<0.5?0:1;
+  G={
+    age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
+    decks:{ancient,modern}, tableau:null,
+    players:[{name:"Giocatore 1",cards:[],joker:true},{name:"Giocatore 2",cards:[],joker:true}],
+    lastTaken:null, pendingReplacement:null
+  };
+  G.tableau=buildTableau("ancient",G.decks.ancient);
+  log(`Nuova partita. Inizia ${G.players[G.current].name}.`);
+  render();
+}
+
+function log(msg){
+  const p=document.createElement("p"); p.className="line"; p.textContent=msg;
+  const l=document.getElementById("log"); l.prepend(p);
+}
+
+function takeCard(idx){
+  if(G.ended) return;
+  const slots=G.tableau.slots, accBefore=accessibility(slots);
+  const s=slots[idx];
+  if(!accBefore[idx]||s.faceDown||s.removed) return;
+  s.removed=true;
+  const pl=G.players[G.current];
+  pl.cards.push(s.card);
+  G.lastTaken={player:G.current,card:s.card};
+
+  const accAfter=accessibility(slots);
+  const newly=[];
+  for(let i=0;i<slots.length;i++) if(!slots[i].removed && !accBefore[i] && accAfter[i]) newly.push(i);
+  const f=flipNew(slots,accAfter);
+  log(`${pl.name} prende ${label(s.card)}.${f?` Rivela ${f} carte.`:""}`);
+
+  const sup=checkSupremacy();
+  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
+
+  if(pl.joker && newly.length){
+    G.pendingReplacement={player:G.current,indices:newly,originCard:s.card};
+    askReplacement();
+    return;
+  }
+  endTurnOrAge();
+}
+
+function askReplacement(){
+  const p=G.pendingReplacement; if(!p) return;
+  const d=document.getElementById("modal");
+  d.innerHTML=`<h3>Wonder: Replacement</h3><p>Usare il Joker per prendere una carta appena sbloccata e rimettere ${label(p.originCard)} nel suo posto?</p><div class='optRow'><button id='skip'>No</button>${p.indices.map(i=>`<button data-i='${i}'>${label(G.tableau.slots[i].card)}</button>`).join("")}</div>`;
+  d.showModal();
+  d.querySelector("#skip").onclick=()=>{d.close();G.pendingReplacement=null; endTurnOrAge();};
+  d.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.i; const slot=G.tableau.slots[i];
+    const pl=G.players[G.current];
+    pl.joker=false;
+    pl.cards.pop();
+    pl.cards.push(slot.card);
+    slot.card=p.originCard;
+    slot.faceDown=false;
+    log(`${pl.name} usa il Joker (Replacement): prende ${label(pl.cards[pl.cards.length-1])} e rimette ${label(p.originCard)} nel tableau.`);
+    G.pendingReplacement=null; d.close();
+    const sup=checkSupremacy();
+    if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
+    endTurnOrAge();
+  });
+}
+
+function maybeSeizeInitiative(nextFirst){
+  const second=1-nextFirst;
+  const pl=G.players[second];
+  if(!pl.joker) return Promise.resolve(nextFirst);
+  return new Promise(resolve=>{
+    const d=document.getElementById("modal");
+    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole scartare il Joker per diventare primo? (Seize Initiative)</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, usa Joker</button></div>`;
+    d.showModal();
+    d.querySelector("#no").onclick=()=>{d.close();resolve(nextFirst);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} usa il Joker per Seize Initiative ed è primo nell'Età Moderna.`); resolve(second);};
+  });
+}
+
+async function endTurnOrAge(){
+  const slots=G.tableau.slots;
+  if(slots.every(s=>s.removed)){
+    if(G.age==="ancient"){
+      const start=await maybeSeizeInitiative(G.nextAgeFirst);
+      G.age="modern";
+      G.tableau=buildTableau("modern",G.decks.modern);
+      G.current=start;
+      log(`Fine Età Antica. Inizia Età Moderna con ${G.players[G.current].name}.`);
+      render(); return;
+    }
+    G.ended=true;
+    const sc=scoreGame();
+    const w=sc.vp[0]===sc.vp[1]?null:(sc.vp[0]>sc.vp[1]?0:1);
+    log(`Fine partita. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
+    log(w===null?"Pareggio." : `🏆 Vince ${G.players[w].name} ai punti.`);
+    render(); return;
+  }
+  G.current=1-G.current;
+  render();
+}
+
+function render(){
+  if(!G) return;
+  document.getElementById("agePill").textContent=`Età: ${G.age==="ancient"?"Antica":"Moderna"}`;
+  document.getElementById("turnPill").textContent=G.ended?"Partita conclusa":`Turno: ${G.players[G.current].name}`;
+  document.getElementById("tableauInfo").textContent=`Carte rimanenti: ${G.tableau.slots.filter(s=>!s.removed).length}`;
+
+  const sg=document.getElementById("statusGrid");
+  const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>techPairs(p.cards));
+  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Breakthroughs: ${tp[0]} / ${tp[1]}</div><div class='pill'>Joker: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
+
+  const col=document.getElementById("collections");
+  col.innerHTML="";
+  for(let i=0;i<2;i++){
+    const p=G.players[i];
+    const el=document.createElement("div"); el.className=`pbox ${G.current===i&&!G.ended?"active":""}`;
+    const cText=p.cards.map(label);
+    el.innerHTML=`<strong>${p.name}</strong> (${p.cards.length} carte)<div style='font-size:12px;color:var(--muted)'>${SUIT_NAME.S}: ${p.cards.filter(c=>c.suit==="S").length} | ${SUIT_NAME.H}: ${p.cards.filter(c=>c.suit==="H").length} | ${SUIT_NAME.D}: ${p.cards.filter(c=>c.suit==="D").length} | ${SUIT_NAME.C}: ${p.cards.filter(c=>c.suit==="C").length}</div><div class='cardsMini'>${cText.slice(-24).map(t=>`<span class='m'>${t}</span>`).join("")||"<span class='m'>Nessuna</span>"}</div>`;
+    col.appendChild(el);
+  }
+
+  const t=document.getElementById("tableau"); const {slots,geom}=G.tableau;
+  t.style.width=geom.width+"px"; t.style.height=geom.height+"px"; t.innerHTML="";
+  const acc=accessibility(slots);
+  for(let i=0;i<slots.length;i++){
+    const s=slots[i];
+    const e=document.createElement("div");
+    e.className=`card ${s.removed?"removed":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!s.removed?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!s.removed?"open accessible":""} ${!acc[i]&&!s.removed?"blocked":""}`;
+    e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
+    e.innerHTML=s.faceDown?"<div>🂠</div>":`<div>${label(s.card)}</div><div class='mini'>${SUIT_NAME[s.card.suit]}</div>`;
+    e.onclick=()=>takeCard(i);
+    t.appendChild(e);
+  }
+}
+
+document.getElementById("newGameBtn").onclick=()=>newGame();
+newGame();
+</script>
+</body>
+</html>
