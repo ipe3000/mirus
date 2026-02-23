@@ -95,7 +95,22 @@ const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
-const AGE_SHAPES={ancient:[2,4,7,6,5], modern:[2,5,8,7,6]};
+const TABLEAU_MODEL={
+  ancient:[
+    {faceDown:false,xs:[2,4]},
+    {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
+    {faceDown:false,xs:[0,1,2,3,4,5,6]},
+    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},
+    {faceDown:false,xs:[1,2,3,4,5]}
+  ],
+  modern:[
+    {faceDown:false,xs:[2,5]},
+    {faceDown:true,xs:[1.5,2.5,3.5,4.5,5.5]},
+    {faceDown:false,xs:[0,1,2,3,4,5,6,7]},
+    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5,6.5]},
+    {faceDown:false,xs:[1,2,3,4,5,6]}
+  ]
+};
 let G=null;
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -108,66 +123,56 @@ function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"
 function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
 function cardClass(c){return `s${c.suit}`;}
 
-function layout(shape){
+function layout(model){
   const w=78,h=110,v=42,hStep=42;
-  const widths=shape.map(n=>w+(n-1)*hStep);
-  const maxW=Math.max(...widths); const pos=[]; let idx=0;
-  for(let r=0;r<shape.length;r++){
-    const n=shape[r], rowW=widths[r], x0=(maxW-rowW)/2;
-    for(let c=0;c<n;c++) pos[idx++]={row:r,col:c,x:x0+c*hStep,y:r*v};
+  const allX=model.flatMap(r=>r.xs);
+  const minX=Math.min(...allX), maxX=Math.max(...allX);
+  const width=w+(maxX-minX)*hStep;
+  const pos=[];
+  let idx=0;
+  for(let row=0;row<model.length;row++){
+    for(let col=0;col<model[row].xs.length;col++){
+      const gx=model[row].xs[col];
+      pos[idx++]={row,col,gridX:gx,x:(gx-minX)*hStep,y:row*v};
+    }
   }
-  return {w,h,pos,width:maxW,height:(shape.length-1)*v+h};
+  return {w,h,hStep,minX,pos,width,height:(model.length-1)*v+h};
 }
 
-function buildRows(shape){
+function buildRows(model){
   let idx=0;
-  return shape.map((len,row)=>Array.from({length:len},(_,col)=>({idx:idx++,row,col})));
+  return model.map((cfg,row)=>cfg.xs.map((gridX,col)=>({idx:idx++,row,col,gridX})));
 }
 function buildCovering(rows){
   const total=rows.reduce((a,r)=>a+r.length,0);
-  const covers=Array.from({length:total},()=>[]);
-  for(let r=1;r<rows.length;r++){
-    const upper=rows[r-1], lower=rows[r];
-    const u=upper.length, l=lower.length;
-    for(let li=0;li<l;li++){
-      const lowerIdx=lower[li].idx;
-      let targets=[];
-      if(l===u+1){
-        if(li>0) targets.push(upper[li-1].idx);
-        if(li<u) targets.push(upper[li].idx);
-      }else if(l===u+2){
-        const left=Math.floor((li*(u-1))/Math.max(1,l-1));
-        const right=Math.min(u-1,left+1);
-        targets=[upper[left].idx, upper[right].idx];
-      }else{
-        const near=Math.min(u-1,Math.round((li*(u-1))/Math.max(1,l-1)));
-        targets=[upper[near].idx];
-      }
-      covers[lowerIdx]=[...new Set(targets)].slice(0,2);
+  const coveredBy=Array.from({length:total},()=>[]);
+  for(let r=0;r<rows.length-1;r++){
+    const upper=rows[r], lower=rows[r+1];
+    const lowerByX=new Map(lower.map(s=>[s.gridX,s.idx]));
+    for(const slot of upper){
+      const c1=lowerByX.get(slot.gridX-0.5);
+      const c2=lowerByX.get(slot.gridX+0.5);
+      if(c1!==undefined) coveredBy[slot.idx].push(c1);
+      if(c2!==undefined) coveredBy[slot.idx].push(c2);
     }
   }
-  return covers;
+  return coveredBy;
 }
 function buildTableau(age,deck){
-  const shape=AGE_SHAPES[age], geom=layout(shape), slots=[];
-  const rows=buildRows(shape);
-  for(let i=0;i<shape.reduce((a,b)=>a+b,0);i++){
-    const p=geom.pos[i];
+  const model=TABLEAU_MODEL[age], geom=layout(model), slots=[];
+  const rows=buildRows(model);
+  for(const p of geom.pos){
     const card=deck.pop();
-    const faceDown=(p.row%2===1);
-    slots.push({card,removed:false,faceDown,row:p.row,col:p.col,x:p.x,y:p.y});
+    const faceDown=model[p.row].faceDown;
+    slots.push({card,removed:false,faceDown,row:p.row,col:p.col,gridX:p.gridX,x:p.x,y:p.y});
   }
-  return {slots,geom,covers:buildCovering(rows)};
+  return {slots,geom,coveredBy:buildCovering(rows)};
 }
 function accessibility(tableau){
-  const {slots,covers}=tableau;
+  const {slots,coveredBy}=tableau;
   return slots.map((s,i)=>{
     if(s.removed) return false;
-    for(let j=0;j<slots.length;j++){
-      if(slots[j].removed) continue;
-      if((covers[j]||[]).includes(i)) return false;
-    }
-    return true;
+    return !(coveredBy[i]||[]).some(cIdx=>!slots[cIdx].removed);
   });
 }
 function flipNew(slots,acc){
