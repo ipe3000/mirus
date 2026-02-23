@@ -86,14 +86,14 @@ function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.
 function randomPlayout(S){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=moves[Math.floor(Math.random()*moves.length)]; applyTake(S,idx);} if(S.winner!==undefined) return S.winner; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; return sc[0]===sc[1]?2:(sc[0]>sc[1]?0:1);}
 function remainingOpenCards(S){return S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);}
 function monteCarloIters(S,movesCount){
- let iters=48;
- if(S.age==="modern") iters+=16;
+ let iters=44;
+ if(S.age==="modern") iters+=14;
  const left=remainingOpenCards(S);
- if(left<=12) iters+=24;
- if(left<=7) iters+=32;
+ if(left<=12) iters+=20;
+ if(left<=7) iters+=28;
  if(movesCount<=5) iters=Math.round(iters*1.2);
  if(movesCount<=3) iters=Math.round(iters*1.25);
- return Math.max(48,iters);
+ return Math.max(44,iters);
 }
 function evalMove(S,idx,strategy,movesCount){
  if(strategy==="random") return Math.random();
