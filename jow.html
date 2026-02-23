@@ -10,22 +10,24 @@
       --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --accent:#60a5fa;
     }
     *{box-sizing:border-box}
-    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif; background:radial-gradient(circle at top,#1c2740,#0b1020 60%); color:var(--text)}
+    html,body{height:100%}
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif; background:radial-gradient(circle at top,#1c2740,#0b1020 60%); color:var(--text); display:flex; flex-direction:column; overflow:hidden}
     header{padding:10px 14px; border-bottom:1px solid #334155; background:#0b1020cc; position:sticky; top:0; z-index:20; backdrop-filter:blur(5px)}
     h1{margin:0;font-size:18px}
     .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between}
     button{background:#1f2c45; border:1px solid #4b5d87; color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer}
     button.primary{background:#1d4ed8; border-color:#2563eb}
     button:disabled{opacity:.5;cursor:not-allowed}
-    main{max-width:1200px; margin:0 auto; padding:12px; display:grid; gap:12px; grid-template-columns:1.3fr .7fr}
+    main{max-width:1200px; width:100%; margin:0 auto; padding:12px; display:grid; gap:12px; grid-template-columns:1.3fr .7fr; flex:1; min-height:0}
     @media (max-width: 980px){main{grid-template-columns:1fr}}
-    .panel{background:#111a2dcc; border:1px solid #334155; border-radius:14px; overflow:hidden}
+    .panel{background:#111a2dcc; border:1px solid #334155; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; min-height:0}
     .hd{padding:10px 12px; border-bottom:1px solid #334155; font-weight:700; display:flex; justify-content:space-between; align-items:center; gap:8px}
-    .bd{padding:10px}
+    .bd{padding:10px; min-height:0}
     .status{display:grid; gap:8px; grid-template-columns:repeat(2,minmax(0,1fr)); font-size:13px}
     .pill{background:#0f172a; border:1px solid #334155; border-radius:999px; padding:3px 8px; color:var(--muted); font-size:12px}
-    .tableauWrap{overflow:auto}
-    .tableau{position:relative; margin:0 auto}
+    .tableauWrap{overflow:hidden; display:flex; justify-content:center; align-items:flex-start}
+    .tableau{position:relative; margin:0; transform-origin:top left}
+    .sidePanel .bd{overflow:auto}
     .card{position:absolute; width:64px; height:90px; border-radius:12px; border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s; text-align:center}
     .card::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);pointer-events:none}
     .card .big{font-size:18px; font-weight:760; line-height:1}
@@ -75,11 +77,11 @@
   </div>
 </header>
 <main>
-  <section class="panel">
+  <section class="panel tableauPanel">
     <div class="hd"><span>Tableau</span><span id="tableauInfo" class="pill"></span></div>
     <div class="bd tableauWrap"><div id="tableau" class="tableau"></div></div>
   </section>
-  <section class="panel">
+  <section class="panel sidePanel">
     <div class="hd">Giocatori</div>
     <div class="bd">
       <div class="row" style="margin-bottom:8px">
@@ -521,8 +523,19 @@ function render(){
     col.appendChild(el);
   }
 
-  const t=document.getElementById("tableau"); const {slots,geom}=G.tableau;
-  t.style.width=geom.width+"px"; t.style.height=geom.height+"px"; t.innerHTML="";
+  const t=document.getElementById("tableau"); const wrap=t.parentElement; const panel=t.closest(".tableauPanel"); const headerH=panel?.querySelector(".hd")?.offsetHeight||0;
+  const {slots,geom}=G.tableau;
+  const wrapStyle=getComputedStyle(wrap);
+  const padX=(parseFloat(wrapStyle.paddingLeft)||0)+(parseFloat(wrapStyle.paddingRight)||0);
+  const padY=(parseFloat(wrapStyle.paddingTop)||0)+(parseFloat(wrapStyle.paddingBottom)||0);
+  const availableW=Math.max(200,wrap.clientWidth-padX);
+  const availableH=Math.max(120,window.innerHeight-headerH-36-padY);
+  const scale=Math.min(1,availableW/geom.width,availableH/geom.height);
+  t.style.width=geom.width+"px";
+  t.style.height=geom.height+"px";
+  t.style.transform=`scale(${scale})`;
+  wrap.style.height=(geom.height*scale)+"px";
+  t.innerHTML="";
   const acc=accessibility(G.tableau);
   for(let i=0;i<slots.length;i++){
     const s=slots[i];
@@ -537,6 +550,8 @@ function render(){
   }
   maybeRunAiTurn();
 }
+
+window.addEventListener("resize",()=>render());
 
 document.getElementById("newGameBtn").onclick=()=>newGame();
 document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
