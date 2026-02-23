@@ -3,777 +3,108 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mirus Stats Lab — AI vs AI Monte Carlo</title>
+  <title>Jokers of Wonders — Stats Lab</title>
   <style>
-    :root{
-      --bg:#0b1020; --panel:#121a2f; --muted:#93a3c7; --text:#eef4ff; --acc:#22c55e; --line:#263350;
-    }
-    *{box-sizing:border-box}
-    body{margin:0; font-family:Inter, system-ui, Arial; background:linear-gradient(180deg,#0a0f1d,#0e1730); color:var(--text);}
-    .app{max-width:1200px; margin:0 auto; padding:18px; display:grid; grid-template-columns:300px 1fr; gap:14px; min-height:100vh;}
-    @media(max-width:980px){.app{grid-template-columns:1fr;}}
-    .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px;}
-    h1{margin:0 0 6px; font-size:18px}
-    p{margin:0; color:var(--muted)}
-    .controls{display:grid; gap:10px; margin-top:12px;}
-    label{font-size:12px; color:#c8d7f7; display:grid; gap:6px;}
-    input, select, button{border-radius:10px; border:1px solid #33466e; background:#0d1529; color:var(--text); padding:9px 10px;}
-    button{cursor:pointer; background:#16356f; border-color:#3c69b5; font-weight:700}
-    button:disabled{opacity:.6; cursor:not-allowed}
-    .kpi{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:12px;}
-    @media(max-width:980px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr));}}
-    .card{background:#0d1528; border:1px solid var(--line); border-radius:12px; padding:10px;}
-    .card .k{font-size:12px; color:var(--muted)}
-    .card .v{font-size:24px; font-weight:800; margin-top:3px}
-    .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-    @media(max-width:980px){.grid{grid-template-columns:1fr;}}
-    table{width:100%; border-collapse:collapse; font-size:13px}
-    th,td{padding:7px 8px; border-bottom:1px solid var(--line); text-align:left}
-    th{color:#c4d3f5; font-size:12px; text-transform:uppercase; letter-spacing:.5px}
-    .hist{display:grid; gap:6px}
-    .bar{display:grid; grid-template-columns:66px 1fr 50px; gap:8px; align-items:center; font-size:12px;}
-    .track{height:10px; border-radius:999px; background:#0a1222; border:1px solid #29395a; overflow:hidden}
-    .fill{height:100%; background:linear-gradient(90deg,#2dd4bf,#60a5fa)}
-    .small{font-size:12px; color:var(--muted)}
+    :root{--bg:#0b1020;--panel:#121a2f;--muted:#93a3c7;--text:#eef4ff;--line:#263350}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#0a0f1d,#0e1730);color:var(--text)}
+    .app{max-width:1200px;margin:0 auto;padding:18px;display:grid;grid-template-columns:300px 1fr;gap:14px;min-height:100vh}
+    @media(max-width:980px){.app{grid-template-columns:1fr}}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .controls{display:grid;gap:10px}.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+    .card{background:#0d1528;border:1px solid var(--line);border-radius:12px;padding:10px}.card .k{font-size:12px;color:var(--muted)}.card .v{font-size:24px;font-weight:800;margin-top:3px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:980px){.grid{grid-template-columns:1fr}}
+    table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+    th{color:#c4d3f5;font-size:12px;text-transform:uppercase}.hist{display:grid;gap:6px}.bar{display:grid;grid-template-columns:66px 1fr 50px;gap:8px;align-items:center;font-size:12px}
+    .track{height:10px;border-radius:999px;background:#0a1222;border:1px solid #29395a;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#2dd4bf,#60a5fa)}
+    input,select,button{border-radius:10px;border:1px solid #33466e;background:#0d1529;color:var(--text);padding:9px 10px} button{cursor:pointer;background:#16356f;font-weight:700}
+    .small{font-size:12px;color:var(--muted)}
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
-      <h1>Mirus Stats Lab — AI vs AI Monte Carlo</h1>
-      <p>Batch AI vs AI basata sul core di <code>index.html</code>, pensata per stress test Monte Carlo e analisi di bilanciamento da board game designer.</p>
+      <h1>Jokers of Wonders — Stats Lab</h1>
+      <p class="small">Simulatore Monte Carlo coerente con le regole di <code>jow.html</code>, utile a board game designer per tuning bilanciamento (win-rate, condizioni di vittoria, peso delle categorie VP).</p>
       <div class="controls">
-        <label>Numero partite
-          <input id="games" type="number" min="1" max="20000" value="1000" />
-        </label>
-        <label>Strategia AI A
-          <select id="playerStrategy">
-            <option value="random">Random</option>
-            <option value="greedy">Greedy</option>
-            <option value="mc" selected>Monte Carlo</option>
-          </select>
-        </label>
-        <label>Uso Leader AI A
-          <select id="playerLeaderMode">
-            <option value="ancient">Leader forzato solo in Ancient Age</option>
-            <option value="modern">Leader forzato solo in Modern Age</option>
-            <option value="free" selected>Leader libero</option>
-          </select>
-        </label>
-        <label>Strategia AI B
-          <select id="aiStrategy">
-            <option value="random">Random</option>
-            <option value="greedy">Greedy</option>
-            <option value="mc" selected>Monte Carlo</option>
-          </select>
-        </label>
-        <label>Uso Leader AI B
-          <select id="aiLeaderMode">
-            <option value="ancient">Leader forzato solo in Ancient Age</option>
-            <option value="modern">Leader forzato solo in Modern Age</option>
-            <option value="free" selected>Leader libero</option>
-          </select>
-        </label>
-        <label>Parte per primo
-          <select id="startMode">
-            <option value="human">AI A</option>
-            <option value="ai">AI B</option>
-            <option value="alternate" selected>Alternato</option>
-          </select>
-        </label>
+        <label>Numero partite <input id="games" type="number" min="1" max="10000" value="1000" /></label>
+        <label>Strategia AI A <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>Strategia AI B <select id="aiStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>Parte per primo <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternato</option></select></label>
         <button id="runBtn">Esegui simulazione</button>
-        <label>
-          <input id="keepAwake" type="checkbox" checked />
-          Mantieni schermo acceso durante la simulazione
-        </label>
         <div id="status" class="small">Pronto.</div>
-        <div id="perf" class="small"></div>
-        <div id="wakeStatus" class="small"></div>
       </div>
     </aside>
 
     <main class="panel">
       <div class="kpi">
         <div class="card"><div class="k">Partite</div><div class="v" id="kGames">0</div></div>
-        <div class="card"><div class="k">Win rate AI A</div><div class="v" id="kPlayerWin">0%</div></div>
-        <div class="card"><div class="k">Win rate AI B</div><div class="v" id="kAIWin">0%</div></div>
+        <div class="card"><div class="k">Win rate AI A</div><div class="v" id="kAWin">0%</div></div>
+        <div class="card"><div class="k">Win rate AI B</div><div class="v" id="kBWin">0%</div></div>
         <div class="card"><div class="k">Pareggi</div><div class="v" id="kDraw">0%</div></div>
       </div>
 
       <div class="grid">
-        <section class="card">
-          <h3>Score summary</h3>
-          <table>
-            <thead><tr><th>Metric</th><th>AI A</th><th>AI B</th></tr></thead>
-            <tbody id="scoreTable"></tbody>
-          </table>
-        </section>
-        <section class="card">
-          <h3>Distribuzione margine (AI B - AI A)</h3>
-          <div id="marginHist" class="hist"></div>
-        </section>
+        <section class="card"><h3>Score summary</h3><table><thead><tr><th>Metric</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="scoreTable"></tbody></table></section>
+        <section class="card"><h3>Distribuzione margine VP (AI B - AI A)</h3><div id="marginHist" class="hist"></div></section>
       </div>
 
       <div class="grid" style="margin-top:10px;">
-        <section class="card">
-          <h3>Frequenza eventi</h3>
-          <table>
-            <thead><tr><th>Evento</th><th>Media per partita</th></tr></thead>
-            <tbody id="eventTable"></tbody>
-          </table>
-        </section>
-        <section class="card">
-          <h3>Breakdown VP medio</h3>
-          <table>
-            <thead><tr><th>Categoria</th><th>AI A</th><th>AI B</th></tr></thead>
-            <tbody id="vpTable"></tbody>
-          </table>
-        </section>
+        <section class="card"><h3>Condizioni di vittoria</h3><table><thead><tr><th>Evento</th><th>Frequenza</th></tr></thead><tbody id="eventTable"></tbody></table></section>
+        <section class="card"><h3>Breakdown VP medio (regole jow)</h3><table><thead><tr><th>Categoria</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="vpTable"></tbody></table></section>
       </div>
     </main>
   </div>
 
-  <iframe id="coreFrame" src="index.html" style="display:none"></iframe>
+  <iframe id="coreFrame" src="jow.html" style="display:none"></iframe>
 
 <script>
 (function(){
-  const frame = document.getElementById("coreFrame");
-  const runBtn = document.getElementById("runBtn");
-  const statusEl = document.getElementById("status");
-  const perfEl = document.getElementById("perf");
-  const wakeStatusEl = document.getElementById("wakeStatus");
-  const keepAwakeEl = document.getElementById("keepAwake");
-
-  const els = {
-    kGames: document.getElementById("kGames"),
-    kPlayerWin: document.getElementById("kPlayerWin"),
-    kAIWin: document.getElementById("kAIWin"),
-    kDraw: document.getElementById("kDraw"),
-    scoreTable: document.getElementById("scoreTable"),
-    marginHist: document.getElementById("marginHist"),
-    eventTable: document.getElementById("eventTable"),
-    vpTable: document.getElementById("vpTable")
-  };
-
-  let Core = null;
-  let wakeLock = null;
-  const BATCH_MOVE_BUDGET_MS = 20;
-
-  function wakeLockSupported(){
-    return typeof navigator !== "undefined" && navigator.wakeLock && typeof navigator.wakeLock.request === "function";
-  }
-
-  async function requestWakeLock(){
-    if (!keepAwakeEl.checked) return;
-    if (!wakeLockSupported()){
-      wakeStatusEl.textContent = "Wake Lock non supportato: la simulazione può rallentare se lo schermo si spegne.";
-      return;
-    }
-    try {
-      wakeLock = await navigator.wakeLock.request("screen");
-      wakeStatusEl.textContent = "Wake Lock attivo: schermo mantenuto acceso durante il batch.";
-      wakeLock.addEventListener("release", ()=>{
-        wakeStatusEl.textContent = "Wake Lock rilasciato.";
-        wakeLock = null;
-      });
-    } catch (err){
-      wakeStatusEl.textContent = "Impossibile attivare Wake Lock: la simulazione potrebbe fermarsi a schermo spento.";
-    }
-  }
-
-  async function releaseWakeLock(){
-    if (!wakeLock) return;
-    try { await wakeLock.release(); }
-    catch (_err) { }
-    wakeLock = null;
-  }
-
-  function avg(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
-  function avgDefined(arr){
-    const vals = arr.filter(v=>Number.isFinite(v));
-    return vals.length ? avg(vals) : 0;
-  }
-  function pct(x, n){ return n ? (100*x/n).toFixed(1) + "%" : "0.0%"; }
-
-  function quantile(sorted, q){
-    if (!sorted.length) return 0;
-    const p = (sorted.length - 1) * q;
-    const lo = Math.floor(p), hi = Math.ceil(p);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (p - lo);
-  }
-
-  function enforceLeaderMode(move, player, leaderMode, state){
-    if (!move || move.type !== "leader" || leaderMode === "free") return move;
-    const age = state.pub.age;
-    const blockedByAge =
-      (leaderMode === "ancient" && age !== "ancient") ||
-      (leaderMode === "modern" && age !== "modern");
-    if (!blockedByAge) return move;
-
-    const fallback = Core.enumerateMoves(Core.Engine.getPublicView(state), player)
-      .find(m=>m.type !== "leader");
-    return fallback || move;
-  }
-
-  function chooseForPlayer(state, player, level, leaderMode, perf){
-    if (typeof Core.chooseMoveForPlayer === "function"){
-      const coreNow = frame.contentWindow?.performance?.now ? frame.contentWindow.performance.now() : performance.now();
-      const move = Core.chooseMoveForPlayer(state, player, {
-        level,
-        deadline: coreNow + BATCH_MOVE_BUDGET_MS,
-        debugSink: perf ? (entry)=>{
-          perf.moves++;
-          perf.totalMs += entry.elapsedMs;
-          if (entry.player === 0) perf.playerMs += entry.elapsedMs;
-          else perf.aiMs += entry.elapsedMs;
-          perf.byAlgo[entry.algo] = (perf.byAlgo[entry.algo] || 0) + entry.elapsedMs;
-          perf.byLevel[entry.level] = (perf.byLevel[entry.level] || 0) + entry.elapsedMs;
-        } : null
-      });
-      return enforceLeaderMode(move, player, leaderMode, state);
-    }
-
-    const pv = Core.Engine.getPublicView(state);
-    const moves = Core.enumerateMoves(pv, player);
-    const selected = moves.length ? moves[0] : null;
-    return enforceLeaderMode(selected, player, leaderMode, state);
-  }
-
-  function applyMove(state, player, mv){
-    if (!mv) return;
-    if (mv.type === "kingFinal") { Core.Engine.chooseKingWonder(state, {cardId: mv.cardId, delta: mv.delta}, true); return; }
-    if (mv.type === "modernSwap") { Core.Engine.useModernSwap(state, player); return; }
-    if (mv.type === "leader") { Core.Engine.useJokerDouble(state); return; }
-    if (mv.type === "take") { Core.Engine.take(state, mv.idx); return; }
-    if (mv.type === "pass") { state.pub.picksLeftThisTurn = 1; state.pub.currentPlayer = 1 - state.pub.currentPlayer; }
-  }
-
-  function wonderModsFromState(state){
-    return [0,1].map(p=>{
-      const wm = state.pub.wonderMark?.[p] || {};
-      return {cardId: wm.cardId || null, delta: Number(wm.delta) || 0};
-    });
-  }
-
-  function scoreWithWonderConfig(state, wonderMods, wonderCfg){
-    return Core.totalScoring(
-      state.pub.taken[0],
-      state.pub.taken[1],
-      wonderMods,
-      wonderCfg
-    );
-  }
-
-  function categoryVPBreakdown(state, opts={}){
-    const {wonderModsOverride, scoringOpts=null} = opts;
-    const fw = frame.contentWindow;
-    const allH = state.pub.taken[0].slice();
-    const allA = state.pub.taken[1].slice();
-    const hAnc = allH.filter(c=>c.age === "ancient");
-    const aAnc = allA.filter(c=>c.age === "ancient");
-    const wonderMods = wonderModsOverride === undefined ? wonderModsFromState(state) : wonderModsOverride;
-
-    const anc = fw.ancientScoring(hAnc, aAnc);
-    const mod = fw.modernScoring(allH, allA, wonderMods, scoringOpts);
-
-    const spades = {
-      human: anc.human + (mod.detail.hs > mod.detail.as ? 8 : (mod.detail.as > mod.detail.hs ? 0 : fw.wonderTieOwner(allH, allA, scoringOpts) === 0 ? 8 : 0)),
-      ai: anc.ai + (mod.detail.as > mod.detail.hs ? 8 : (mod.detail.hs > mod.detail.as ? 0 : fw.wonderTieOwner(allH, allA, scoringOpts) === 1 ? 8 : 0))
-    };
-
-    const clubs = {
-      human: fw.foodPoints(allH, wonderMods),
-      ai: fw.foodPoints(allA, wonderMods)
-    };
-
-    const diamonds = fw.cultureContestVP(allH, allA, wonderMods, scoringOpts);
-    const spadesSum = {human: mod.detail.hs, ai: mod.detail.as};
-    const clubsSum = {
-      human: fw.sumSuit(allH, "C", wonderMods),
-      ai: fw.sumSuit(allA, "C", wonderMods)
-    };
-    const tieOwner = fw.wonderTieOwner(allH, allA, scoringOpts);
-    const spadesFirstOwners =
-      spadesSum.human > spadesSum.ai ? [0]
-      : spadesSum.ai > spadesSum.human ? [1]
-      : tieOwner === 0 ? [0]
-      : tieOwner === 1 ? [1]
-      : [];
-    const clubsFirstOwners =
-      clubsSum.human > clubsSum.ai ? [0]
-      : clubsSum.ai > clubsSum.human ? [1]
-      : [];
-    const hearts = {
-      human: fw.techPoints(allH, wonderMods),
-      ai: fw.techPoints(allA, wonderMods)
-    };
-
-    const wonder = {
-      human: Number(state.pub.wonderMark?.[0]?.delta) || 0,
-      ai: Number(state.pub.wonderMark?.[1]?.delta) || 0
-    };
-
-    const calamities = {
-      ancient5: {
-        human: fw.hasAllFourOfValue(hAnc, 5) ? -3 : 0,
-        ai: fw.hasAllFourOfValue(aAnc, 5) ? -3 : 0
-      },
-      modern10: {
-        human: fw.hasAllFourOfValue(allH, 10) ? -6 : 0,
-        ai: fw.hasAllFourOfValue(allA, 10) ? -6 : 0
-      }
-    };
-
-    const heartRuns = {
-      human: fw.circularRuns(fw.valuesSet(allH, "H", wonderMods)).filter(r=>r.len>=3),
-      ai: fw.circularRuns(fw.valuesSet(allA, "H", wonderMods)).filter(r=>r.len>=3)
-    };
-
-    return {
-      suits: {
-        hearts,
-        diamonds: {human: diamonds.h, ai: diamonds.a},
-        clubs,
-        spades,
-        wonder,
-        calamities
-      },
-      diamondsTiers: {
-        bestOwners: [...new Set((diamonds.bestGroup || []).map(x=>x.owner))],
-        secondOwners: [...new Set((diamonds.secondGroup || []).map(x=>x.owner))]
-      },
-      firstPrizeOwners: {
-        spades: spadesFirstOwners,
-        clubs: clubsFirstOwners
-      },
-      heartsLength: {
-        humanLongest: heartRuns.human.length ? Math.max(...heartRuns.human.map(r=>r.len)) : 0,
-        aiLongest: heartRuns.ai.length ? Math.max(...heartRuns.ai.map(r=>r.len)) : 0,
-        humanRuns: heartRuns.human.length,
-        aiRuns: heartRuns.ai.length
-      }
-    };
-  }
-
-  function simulateOne(startingPlayer, p0Level, p1Level, p0LeaderMode, p1LeaderMode, perf){
-    const state = Core.Engine.newGame(startingPlayer);
-    const events = {playerLeader:0, aiLeader:0, playerSwap:0, aiSwap:0, kingChoices:0};
-    const leaderTiming = [];
-    const ancientStarter = state.pub.currentPlayer;
-    let modernStarter = null;
-    let turnNo = 0;
-
-    let guard = 0;
-    while(!state.pub.ended && guard < 600){
-      guard++;
-
-      // Modern swap is an out-of-turn choice for the player who would act second.
-      // Simulate it before the current player's normal move.
-      for (const candidate of [0,1]){
-        if (!Core.Engine.canUseModernSwap(state.pub, candidate)) continue;
-        const level = candidate===0 ? p0Level : p1Level;
-        const leaderMode = candidate===0 ? p0LeaderMode : p1LeaderMode;
-        const mv = chooseForPlayer(state, candidate, level, leaderMode, perf);
-        if (mv?.type === "modernSwap"){
-          candidate===0 ? events.playerSwap++ : events.aiSwap++;
-          applyMove(state, candidate, mv);
-        }
-      }
-      if (state.pub.ended) break;
-
-      const p = state.pub.currentPlayer;
-      turnNo++;
-      const ageBeforeMove = state.pub.age;
-      const level = p===0 ? p0Level : p1Level;
-      const leaderMode = p===0 ? p0LeaderMode : p1LeaderMode;
-      const mv = chooseForPlayer(state, p, level, leaderMode, perf);
-      if (mv?.type === "leader"){
-        p===0 ? events.playerLeader++ : events.aiLeader++;
-        leaderTiming.push({player:p, turn:turnNo, age:ageBeforeMove});
-      }
-      if (mv?.type === "modernSwap") p===0 ? events.playerSwap++ : events.aiSwap++;
-      if (mv?.type === "kingFinal") events.kingChoices++;
-      applyMove(state, p, mv);
-      if (modernStarter===null && ageBeforeMove === "ancient" && state.pub.age === "modern"){
-        modernStarter = state.pub.currentPlayer;
-      }
-    }
-
-    const final = state.pub.score;
-    const breakdown = scoreWithWonderConfig(state, state.pub.wonderMark || null, null);
-    const noWonderBreakdown = scoreWithWonderConfig(state, null, {disableAllWonderTieBreaks:true});
-    const categoryBreakdown = categoryVPBreakdown(state);
-    const noWonderCategoryBreakdown = categoryVPBreakdown(state, {
-      wonderModsOverride: null,
-      scoringOpts: {disableAllWonderTieBreaks:true}
-    });
-    const wonderImpact = {
-      human: breakdown.human - noWonderBreakdown.human,
-      ai: breakdown.ai - noWonderBreakdown.ai
-    };
-
-    const cloneMarks = (marks)=>{
-      if (!marks) return null;
-      if (typeof structuredClone === "function") return structuredClone(marks);
-      return JSON.parse(JSON.stringify(marks));
-    };
-    const playerOnlyOff = cloneMarks(state.pub.wonderMark);
-    const aiOnlyOff = cloneMarks(state.pub.wonderMark);
-    if (playerOnlyOff?.[0]){ playerOnlyOff[0].cardId = null; playerOnlyOff[0].delta = 0; }
-    if (aiOnlyOff?.[1]){ aiOnlyOff[1].cardId = null; aiOnlyOff[1].delta = 0; }
-
-    const playerWonderCounterfactual = playerOnlyOff
-      ? scoreWithWonderConfig(state, playerOnlyOff, {disableWonderForPlayer:[true,false]})
-      : noWonderBreakdown;
-    const aiWonderCounterfactual = aiOnlyOff
-      ? scoreWithWonderConfig(state, aiOnlyOff, {disableWonderForPlayer:[false,true]})
-      : noWonderBreakdown;
-
-    const playerWonderApplied = !!state.pub.wonderMark?.[0]?.cardId;
-    const aiWonderApplied = !!state.pub.wonderMark?.[1]?.cardId;
-    const wonderGainOnActivation = {
-      human: playerWonderApplied ? (breakdown.human - playerWonderCounterfactual.human) : null,
-      ai: aiWonderApplied ? (breakdown.ai - aiWonderCounterfactual.ai) : null
-    };
-
-    const playerKings = state.pub.taken[0].filter(c=>c && c.kind === "king").length;
-    const aiKings = state.pub.taken[1].filter(c=>c && c.kind === "king").length;
-
-    const noWonderSuits = {
-      spades: {
-        human: noWonderCategoryBreakdown.suits.spades.human,
-        ai: noWonderCategoryBreakdown.suits.spades.ai
-      },
-      diamonds: {
-        human: noWonderCategoryBreakdown.suits.diamonds.human,
-        ai: noWonderCategoryBreakdown.suits.diamonds.ai
-      },
-      hearts: {
-        human: noWonderCategoryBreakdown.suits.hearts.human,
-        ai: noWonderCategoryBreakdown.suits.hearts.ai
-      },
-      clubs: {
-        human: noWonderCategoryBreakdown.suits.clubs.human,
-        ai: noWonderCategoryBreakdown.suits.clubs.ai
-      }
-    };
-
-    const wonderCategorySwing = {
-      human: {
-        spades: categoryBreakdown.suits.spades.human - noWonderSuits.spades.human,
-        diamonds: categoryBreakdown.suits.diamonds.human - noWonderSuits.diamonds.human,
-        hearts: categoryBreakdown.suits.hearts.human - noWonderSuits.hearts.human,
-        clubs: categoryBreakdown.suits.clubs.human - noWonderSuits.clubs.human
-      },
-      ai: {
-        spades: categoryBreakdown.suits.spades.ai - noWonderSuits.spades.ai,
-        diamonds: categoryBreakdown.suits.diamonds.ai - noWonderSuits.diamonds.ai,
-        hearts: categoryBreakdown.suits.hearts.ai - noWonderSuits.hearts.ai,
-        clubs: categoryBreakdown.suits.clubs.ai - noWonderSuits.clubs.ai
-      }
-    };
-
-    return {
-      player: final.human,
-      ai: final.ai,
-      playerBaseNoWonder: noWonderBreakdown.human,
-      aiBaseNoWonder: noWonderBreakdown.ai,
-      margin: final.ai - final.human,
-      winner: final.human === final.ai ? "draw" : (final.human > final.ai ? "player" : "ai"),
-      events,
-      starters: {ancient: ancientStarter, modern: modernStarter},
-      leaderTiming,
-      kings: {human: playerKings, ai: aiKings},
-      anc: breakdown.detail.anc,
-      mod: breakdown.detail.mod,
-      wonderImpact,
-      wonderGainOnActivation,
-      wonderCategorySwing,
-      suits: categoryBreakdown.suits,
-      diamondsTiers: categoryBreakdown.diamondsTiers,
-      firstPrizeOwners: categoryBreakdown.firstPrizeOwners,
-      heartsLength: categoryBreakdown.heartsLength
-    };
-  }
-
-  function renderRows(tbody, rows){
-    tbody.innerHTML = rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td>${r[2]!==undefined?`<td>${r[2]}</td>`:""}</tr>`).join("");
-  }
-
-  function renderHistogram(margins){
-    const buckets = new Map();
-    for (let x=-20; x<=20; x+=4) buckets.set(`${x}..${x+3}`, 0);
-    buckets.set("<=-21",0); buckets.set(">=21",0);
-
-    for (const m of margins){
-      if (m <= -21) buckets.set("<=-21", buckets.get("<=-21")+1);
-      else if (m >= 21) buckets.set(">=21", buckets.get(">=21")+1);
-      else {
-        const b = Math.floor((m + 20) / 4);
-        const s = -20 + b*4;
-        const key = `${s}..${s+3}`;
-        buckets.set(key, buckets.get(key)+1);
-      }
-    }
-
-    const total = margins.length || 1;
-    const maxN = Math.max(...buckets.values(), 1);
-    els.marginHist.innerHTML = [...buckets.entries()].map(([k,v])=>{
-      const w = Math.round((v/maxN)*100);
-      return `<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${w}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`;
-    }).join("");
-  }
-
-
-
-  function recomputeAndRender(out, perf, batchStartedAt){
-    const playerWins = out.filter(x=>x.winner==="player").length;
-    const aiWins = out.filter(x=>x.winner==="ai").length;
-    const draws = out.length - playerWins - aiWins;
-
-    const pScores = out.map(x=>x.player).sort((a,b)=>a-b);
-    const aScores = out.map(x=>x.ai).sort((a,b)=>a-b);
-    const margins = out.map(x=>x.margin).sort((a,b)=>a-b);
-    const pBaseScores = out.map(x=>x.playerBaseNoWonder).sort((a,b)=>a-b);
-    const aBaseScores = out.map(x=>x.aiBaseNoWonder).sort((a,b)=>a-b);
-
-    const eventTotals = out.reduce((acc,g)=>{
-      for (const k of Object.keys(g.events)) acc[k] = (acc[k] || 0) + g.events[k];
-      return acc;
-    }, {});
-
-    const ancH = avg(out.map(x=>x.anc.human));
-    const ancA = avg(out.map(x=>x.anc.ai));
-    const modH = avg(out.map(x=>x.mod.human));
-    const modA = avg(out.map(x=>x.mod.ai));
-    const heartsLongestH = out.map(x=>x.heartsLength.humanLongest).sort((a,b)=>a-b);
-    const heartsLongestA = out.map(x=>x.heartsLength.aiLongest).sort((a,b)=>a-b);
-    const heartsRunsH = avg(out.map(x=>x.heartsLength.humanRuns));
-    const heartsRunsA = avg(out.map(x=>x.heartsLength.aiRuns));
-    const wonderImpactH = avg(out.map(x=>x.wonderImpact.human));
-    const wonderImpactA = avg(out.map(x=>x.wonderImpact.ai));
-    const wonderGainOnActivationH = avgDefined(out.map(x=>x.wonderGainOnActivation.human));
-    const wonderGainOnActivationA = avgDefined(out.map(x=>x.wonderGainOnActivation.ai));
-    const wonderGainOnActivationHCnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.human)).length;
-    const wonderGainOnActivationACnt = out.filter(x=>Number.isFinite(x.wonderGainOnActivation.ai)).length;
-    const kingSplitCounts = out.reduce((acc, g)=>{
-      const maxK = Math.max(g.kings.human, g.kings.ai);
-      const minK = Math.min(g.kings.human, g.kings.ai);
-      const k = `${maxK}-${minK}`;
-      acc[k] = (acc[k] || 0) + 1;
-      return acc;
-    }, {});
-    // Condizionale su "Meraviglia costruita": almeno 3 Re raccolti in partita,
-    // indipendentemente dal delta finale scelto sulla carta marcata.
-    const wonderBuiltByPlayer = out.filter(x=>x.kings.human >= 3);
-    const wonderBuiltByAI = out.filter(x=>x.kings.ai >= 3);
-    const wonderWinRatePlayer = pct(wonderBuiltByPlayer.filter(x=>x.winner === "player").length, wonderBuiltByPlayer.length);
-    const wonderWinRateAI = pct(wonderBuiltByAI.filter(x=>x.winner === "ai").length, wonderBuiltByAI.length);
-    const diamondsFirstByPlayer = out.filter(x=>x.diamondsTiers.bestOwners.includes(0));
-    const diamondsFirstByAI = out.filter(x=>x.diamondsTiers.bestOwners.includes(1));
-    const spadesFirstByPlayer = out.filter(x=>x.firstPrizeOwners.spades.includes(0));
-    const spadesFirstByAI = out.filter(x=>x.firstPrizeOwners.spades.includes(1));
-    const clubsFirstByPlayer = out.filter(x=>x.firstPrizeOwners.clubs.includes(0));
-    const clubsFirstByAI = out.filter(x=>x.firstPrizeOwners.clubs.includes(1));
-    const hearts3ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 3);
-    const hearts3ByAI = out.filter(x=>x.heartsLength.aiLongest >= 3);
-    const hearts4ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 4);
-    const hearts4ByAI = out.filter(x=>x.heartsLength.aiLongest >= 4);
-    const hearts5ByPlayer = out.filter(x=>x.heartsLength.humanLongest >= 5);
-    const hearts5ByAI = out.filter(x=>x.heartsLength.aiLongest >= 5);
-    const diamondsWinRatePlayer = pct(diamondsFirstByPlayer.filter(x=>x.winner === "player").length, diamondsFirstByPlayer.length);
-    const diamondsWinRateAI = pct(diamondsFirstByAI.filter(x=>x.winner === "ai").length, diamondsFirstByAI.length);
-    const spadesWinRatePlayer = pct(spadesFirstByPlayer.filter(x=>x.winner === "player").length, spadesFirstByPlayer.length);
-    const spadesWinRateAI = pct(spadesFirstByAI.filter(x=>x.winner === "ai").length, spadesFirstByAI.length);
-    const clubsWinRatePlayer = pct(clubsFirstByPlayer.filter(x=>x.winner === "player").length, clubsFirstByPlayer.length);
-    const clubsWinRateAI = pct(clubsFirstByAI.filter(x=>x.winner === "ai").length, clubsFirstByAI.length);
-    const hearts3WinRatePlayer = pct(hearts3ByPlayer.filter(x=>x.winner === "player").length, hearts3ByPlayer.length);
-    const hearts3WinRateAI = pct(hearts3ByAI.filter(x=>x.winner === "ai").length, hearts3ByAI.length);
-    const hearts4WinRatePlayer = pct(hearts4ByPlayer.filter(x=>x.winner === "player").length, hearts4ByPlayer.length);
-    const hearts4WinRateAI = pct(hearts4ByAI.filter(x=>x.winner === "ai").length, hearts4ByAI.length);
-    const hearts5WinRatePlayer = pct(hearts5ByPlayer.filter(x=>x.winner === "player").length, hearts5ByPlayer.length);
-    const hearts5WinRateAI = pct(hearts5ByAI.filter(x=>x.winner === "ai").length, hearts5ByAI.length);
-    const swingH = {
-      spades: avg(out.map(x=>x.wonderCategorySwing.human.spades)),
-      diamonds: avg(out.map(x=>x.wonderCategorySwing.human.diamonds)),
-      hearts: avg(out.map(x=>x.wonderCategorySwing.human.hearts)),
-      clubs: avg(out.map(x=>x.wonderCategorySwing.human.clubs))
-    };
-    const swingA = {
-      spades: avg(out.map(x=>x.wonderCategorySwing.ai.spades)),
-      diamonds: avg(out.map(x=>x.wonderCategorySwing.ai.diamonds)),
-      hearts: avg(out.map(x=>x.wonderCategorySwing.ai.hearts)),
-      clubs: avg(out.map(x=>x.wonderCategorySwing.ai.clubs))
-    };
-    const diamondTier = out.reduce((acc, g)=>{
-      const b = g.diamondsTiers.bestOwners;
-      const s = g.diamondsTiers.secondOwners;
-      if (b.length === 1 && s.length === 1 && b[0] === s[0]) acc.sweep++;
-      else acc.split++;
-      return acc;
-    }, {sweep:0, split:0});
-    const ancientStart = {
-      player: out.filter(x=>x.starters.ancient===0),
-      ai: out.filter(x=>x.starters.ancient===1)
-    };
-    const modernStart = {
-      player: out.filter(x=>x.starters.modern===0),
-      ai: out.filter(x=>x.starters.modern===1)
-    };
-    const leaderTimingsPlayer = out.flatMap(x=>x.leaderTiming.filter(t=>t.player===0));
-    const leaderTimingsAI = out.flatMap(x=>x.leaderTiming.filter(t=>t.player===1));
-
-    els.kGames.textContent = String(out.length);
-    els.kPlayerWin.textContent = pct(playerWins, out.length);
-    els.kAIWin.textContent = pct(aiWins, out.length);
-    els.kDraw.textContent = pct(draws, out.length);
-
-    renderRows(els.scoreTable, [
-      ["Media", avg(pScores).toFixed(2), avg(aScores).toFixed(2)],
-      ["Media senza potere Meraviglia", avg(pBaseScores).toFixed(2), avg(aBaseScores).toFixed(2)],
-      ["Impatto medio Meraviglia", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
-      ["Gain medio Wonder quando attivata", wonderGainOnActivationH.toFixed(2), wonderGainOnActivationA.toFixed(2)],
-      ["Mediana", quantile(pScores, 0.5).toFixed(2), quantile(aScores, 0.5).toFixed(2)],
-      ["P5", quantile(pScores, 0.05).toFixed(2), quantile(aScores, 0.05).toFixed(2)],
-      ["P95", quantile(pScores, 0.95).toFixed(2), quantile(aScores, 0.95).toFixed(2)],
-      ["Media margine (AI-Player)", avg(margins).toFixed(2), "—"]
-    ]);
-
-    renderRows(els.eventTable, [
-      ["Leader Player", (eventTotals.playerLeader / out.length).toFixed(3)],
-      ["Leader AI", (eventTotals.aiLeader / out.length).toFixed(3)],
-      ["Swap Modern Player", (eventTotals.playerSwap / out.length).toFixed(3)],
-      ["Swap Modern AI", (eventTotals.aiSwap / out.length).toFixed(3)],
-      ["King final choice", (eventTotals.kingChoices / out.length).toFixed(3)],
-      ["Calamità 5 Player (freq)", (out.filter(x=>x.suits.calamities.ancient5.human < 0).length / out.length).toFixed(3)],
-      ["Calamità 5 AI (freq)", (out.filter(x=>x.suits.calamities.ancient5.ai < 0).length / out.length).toFixed(3)],
-      ["Calamità 10 Player (freq)", (out.filter(x=>x.suits.calamities.modern10.human < 0).length / out.length).toFixed(3)],
-      ["Calamità 10 AI (freq)", (out.filter(x=>x.suits.calamities.modern10.ai < 0).length / out.length).toFixed(3)],
-      ["♥ Lunghezza max media (Player)", avg(heartsLongestH).toFixed(3)],
-      ["♥ Lunghezza max media (AI)", avg(heartsLongestA).toFixed(3)],
-      ["♥ P95 lunghezza max (Player)", quantile(heartsLongestH, 0.95).toFixed(3)],
-      ["♥ P95 lunghezza max (AI)", quantile(heartsLongestA, 0.95).toFixed(3)],
-      ["♥ Numero sequenze medie (Player)", heartsRunsH.toFixed(3)],
-      ["♥ Numero sequenze medie (AI)", heartsRunsA.toFixed(3)],
-      ["Split Re 2-2", pct(kingSplitCounts["2-2"] || 0, out.length)],
-      ["Split Re 3-1", pct(kingSplitCounts["3-1"] || 0, out.length)],
-      ["Split Re 4-0", pct(kingSplitCounts["4-0"] || 0, out.length)],
-      ["♦ tier sweep", pct(diamondTier.sweep, out.length)],
-      ["♦ tier split", pct(diamondTier.split, out.length)],
-      ["Win% condizionato start Ancient: starter", pct(ancientStart.player.filter(x=>x.winner==="player").length + ancientStart.ai.filter(x=>x.winner==="ai").length, out.length)],
-      ["Win% condizionato start Modern: starter", pct(modernStart.player.filter(x=>x.winner==="player").length + modernStart.ai.filter(x=>x.winner==="ai").length, out.length)],
-      ["Leader timing medio Player (turno)", avg(leaderTimingsPlayer.map(x=>x.turn)).toFixed(2)],
-      ["Leader timing medio AI (turno)", avg(leaderTimingsAI.map(x=>x.turn)).toFixed(2)],
-      ["Leader uso in Ancient (Player)", pct(leaderTimingsPlayer.filter(x=>x.age==="ancient").length, leaderTimingsPlayer.length)],
-      ["Leader uso in Modern (Player)", pct(leaderTimingsPlayer.filter(x=>x.age==="modern").length, leaderTimingsPlayer.length)],
-      ["Leader uso in Ancient (AI)", pct(leaderTimingsAI.filter(x=>x.age==="ancient").length, leaderTimingsAI.length)],
-      ["Leader uso in Modern (AI)", pct(leaderTimingsAI.filter(x=>x.age==="modern").length, leaderTimingsAI.length)]
-    ]);
-
-    renderRows(els.vpTable, [
-      ["♠ VP medi", avg(out.map(x=>x.suits.spades.human)).toFixed(2), avg(out.map(x=>x.suits.spades.ai)).toFixed(2)],
-      ["♣ VP medi", avg(out.map(x=>x.suits.clubs.human)).toFixed(2), avg(out.map(x=>x.suits.clubs.ai)).toFixed(2)],
-      ["♦ VP medi", avg(out.map(x=>x.suits.diamonds.human)).toFixed(2), avg(out.map(x=>x.suits.diamonds.ai)).toFixed(2)],
-      ["♥ VP medi", avg(out.map(x=>x.suits.hearts.human)).toFixed(2), avg(out.map(x=>x.suits.hearts.ai)).toFixed(2)],
-      ["Calamità 5 (malus medio)", avg(out.map(x=>x.suits.calamities.ancient5.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.ancient5.ai)).toFixed(2)],
-      ["Calamità 10 (malus medio)", avg(out.map(x=>x.suits.calamities.modern10.human)).toFixed(2), avg(out.map(x=>x.suits.calamities.modern10.ai)).toFixed(2)],
-      ["Meraviglia (delta medio carta)", avg(out.map(x=>x.suits.wonder.human)).toFixed(2), avg(out.map(x=>x.suits.wonder.ai)).toFixed(2)],
-      ["Meraviglia (win% con Meraviglia)", wonderWinRatePlayer, wonderWinRateAI],
-      ["Quadri (win% con Quadri)", diamondsWinRatePlayer, diamondsWinRateAI],
-      ["Picche (win% con Picche)", spadesWinRatePlayer, spadesWinRateAI],
-      ["Fiori (win% con Fiori)", clubsWinRatePlayer, clubsWinRateAI],
-      ["Cuori (win% con Cuori 3+)", hearts3WinRatePlayer, hearts3WinRateAI],
-      ["Cuori (win% con Cuori 4+)", hearts4WinRatePlayer, hearts4WinRateAI],
-      ["Cuori (win% con Cuori 5+)", hearts5WinRatePlayer, hearts5WinRateAI],
-      ["Meraviglia (impatto medio su totale)", wonderImpactH.toFixed(2), wonderImpactA.toFixed(2)],
-      ["Meraviglia swing medio Δ♠", swingH.spades.toFixed(2), swingA.spades.toFixed(2)],
-      ["Meraviglia swing medio Δ♦", swingH.diamonds.toFixed(2), swingA.diamonds.toFixed(2)],
-      ["Meraviglia swing medio Δ♥", swingH.hearts.toFixed(2), swingA.hearts.toFixed(2)],
-      ["Meraviglia swing medio Δ♣", swingH.clubs.toFixed(2), swingA.clubs.toFixed(2)],
-      ["Meraviglia (gain medio quando attivata)", `${wonderGainOnActivationH.toFixed(2)} (${wonderGainOnActivationHCnt})`, `${wonderGainOnActivationA.toFixed(2)} (${wonderGainOnActivationACnt})`],
-      ["Ancient VP medi", ancH.toFixed(2), ancA.toFixed(2)],
-      ["Modern VP medi", modH.toFixed(2), modA.toFixed(2)],
-      ["Totale medio", (ancH+modH).toFixed(2), (ancA+modA).toFixed(2)]
-    ]);
-
-    renderHistogram(margins);
-
-    const elapsed = performance.now() - batchStartedAt;
-    const msPerGame = elapsed / out.length;
-    const msPerMove = perf.moves ? perf.totalMs / perf.moves : 0;
-    const algoBreakdown = Object.entries(perf.byAlgo)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([k,v])=>`${k}: ${(100*v/Math.max(perf.totalMs,1)).toFixed(1)}%`)
-      .join(" • ");
-    perfEl.textContent = `Tempo medio partita ${msPerGame.toFixed(1)} ms; mossa ${msPerMove.toFixed(2)} ms (Player ${perf.playerMs.toFixed(0)} ms, AI ${perf.aiMs.toFixed(0)} ms). Breakdown: ${algoBreakdown || "n/d"}.`;
-
-    return elapsed;
-  }
-
-  async function runBatch(){
-    if (!Core){ statusEl.textContent = "Core non ancora disponibile."; return; }
-    const n = Math.max(1, Math.min(20000, Number(document.getElementById("games").value) || 1000));
-    const p0 = document.getElementById("playerStrategy").value;
-    const p1 = document.getElementById("aiStrategy").value;
-    const p0LeaderMode = document.getElementById("playerLeaderMode").value;
-    const p1LeaderMode = document.getElementById("aiLeaderMode").value;
-    const startMode = document.getElementById("startMode").value;
-
-    runBtn.disabled = true;
-    statusEl.textContent = `Simulazione in corso: 0/${n}`;
-    await requestWakeLock();
-
-    const out = [];
-    const perf = {moves:0,totalMs:0,playerMs:0,aiMs:0,byAlgo:{},byLevel:{}};
-    const batchStartedAt = performance.now();
-    try {
-      for (let i=0;i<n;i++){
-        const starter = startMode === "alternate" ? (i % 2 === 0 ? "human" : "ai") : startMode;
-        out.push(simulateOne(starter, p0, p1, p0LeaderMode, p1LeaderMode, perf));
-        const done = i + 1;
-        statusEl.textContent = `Simulazione in corso: ${done}/${n}`;
-        if (done % 15 === 0 || done === n){
-          recomputeAndRender(out, perf, batchStartedAt);
-        }
-        await new Promise(r=>setTimeout(r, 0));
-      }
-    } finally {
-      await releaseWakeLock();
-    }
-
-    const elapsed = recomputeAndRender(out, perf, batchStartedAt);
-    statusEl.textContent = `Completato: ${n} partite in ${(elapsed/1000).toFixed(2)}s.`;
-    runBtn.disabled = false;
-  }
-
-  runBtn.addEventListener("click", runBatch);
-
-  frame.addEventListener("load", ()=>{
-    Core = frame.contentWindow && frame.contentWindow.MirusCore;
-    if (!Core){
-      statusEl.textContent = "Impossibile caricare il core da index.html.";
-      runBtn.disabled = true;
-      return;
-    }
-    statusEl.textContent = "Core caricato da index.html. Pronto.";
-    if (!wakeLockSupported()){
-      wakeStatusEl.textContent = "Wake Lock non supportato da questo browser.";
-      keepAwakeEl.checked = false;
-      keepAwakeEl.disabled = true;
-    }
-  });
-
-  document.addEventListener("visibilitychange", ()=>{
-    if (document.visibilityState === "visible" && runBtn.disabled && !wakeLock){
-      requestWakeLock();
-    }
-  });
-
-  keepAwakeEl.addEventListener("change", ()=>{
-    if (!keepAwakeEl.checked) releaseWakeLock();
-    else if (runBtn.disabled && !wakeLock) requestWakeLock();
-  });
+const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
+const TABLEAU_MODEL={ancient:[{faceDown:false,xs:[2,4]},{faceDown:true,xs:[1.5,2.5,3.5,4.5]},{faceDown:false,xs:[0,1,2,3,4,5,6]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[1,2,3,4,5]}],modern:[{faceDown:false,xs:[2,5]},{faceDown:true,xs:[1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[0,1,2,3,4,5,6,7]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5,6.5]},{faceDown:false,xs:[1,2,3,4,5,6]}]};
+const runBtn=document.getElementById("runBtn"), statusEl=document.getElementById("status");
+const pct=(x,n)=>n?`${(100*x/n).toFixed(1)}%`:"0.0%"; const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function makeDeck(){const cards=[];let id=0; for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}} return cards;}
+function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
+function buildRows(model){let idx=0; return model.map((cfg,row)=>cfg.xs.map((gridX,col)=>({idx:idx++,row,col,gridX})));}
+function buildCovering(rows){const total=rows.reduce((a,r)=>a+r.length,0), coveredBy=Array.from({length:total},()=>[]); for(let r=0;r<rows.length-1;r++){const upper=rows[r],lower=rows[r+1],map=new Map(lower.map(s=>[s.gridX,s.idx])); for(const slot of upper){const c1=map.get(slot.gridX-0.5),c2=map.get(slot.gridX+0.5); if(c1!==undefined) coveredBy[slot.idx].push(c1); if(c2!==undefined) coveredBy[slot.idx].push(c2);}} return coveredBy;}
+function buildTableau(age,deck){const model=TABLEAU_MODEL[age], rows=buildRows(model), covering=buildCovering(rows), slots=[]; for(let row=0;row<model.length;row++){for(let col=0;col<model[row].xs.length;col++){slots.push({card:deck.pop(),removed:false,faceDown:model[row].faceDown,row,col});}} return {slots,coveredBy:covering};}
+function accessibility(T){const {slots,coveredBy}=T; return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));}
+function flipNew(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed && slots[i].faceDown && acc[i]) slots[i].faceDown=false;}
+function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4","5"].includes(c.rank)?1:["6","7","8","9","10"].includes(c.rank)?2:3),0);}
+function breakthroughCount(cards){const hs=[...new Set(cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]))].sort((a,b)=>a-b); let links=0; for(let i=1;i<hs.length;i++) if(hs[i]===hs[i-1]+1) links++; return links;}
+function foodVP(cards){const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0); return Math.floor(v/5);}
+function hasFourKings(cards){return ["S","D","H","C"].every(s=>cards.some(c=>c.suit===s && c.rank==="K"));}
+function diamondSequences(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
+function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], food=[foodVP(a),foodVP(b)], king=[hasFourKings(a)?-5:0,hasFourKings(b)?-5:0]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[5,0]; else if(sw[1]>sw[0]) military=[0,5]; vp[0]+=military[0]+food[0]+tech[0]*2+king[0]; vp[1]+=military[1]+food[1]+tech[1]*2+king[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; [12,6,3].forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,food,techVP:[tech[0]*2,tech[1]*2],culture,kingPenalty:king,swords:sw,breakthrough:tech};}
+function checkSupremacy(S){const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards)); if(tp[0]>=4) return {winner:0,reason:"Supremazia Tecnologica"}; if(tp[1]>=4) return {winner:1,reason:"Supremazia Tecnologica"}; if(sw[0]-sw[1]>10) return {winner:0,reason:"Supremazia Militare"}; if(sw[1]-sw[0]>10) return {winner:1,reason:"Supremazia Militare"}; return null;}
+function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
+function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
+function advanceAge(S){if(S.age==="ancient"){const second=1-S.nextAgeFirst; S.modernSwapStillAvailable=true; if(S.players[second].joker){S.players[second].joker=false; S.current=second; S.events.modernSwap++;} else S.current=S.nextAgeFirst; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
+function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false; if(S.tableau.slots.every(s=>s.removed)) advanceAge(S); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
+function randomPlayout(S){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=moves[Math.floor(Math.random()*moves.length)]; applyTake(S,idx);} if(S.winner!==undefined) return S.winner; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; return sc[0]===sc[1]?2:(sc[0]>sc[1]?0:1);}
+function evalMove(S,idx,strategy){if(strategy==="random") return Math.random(); if(strategy==="greedy"){const C=cloneState(S); applyTake(C,idx); const sc=scoreFromCards(C.players[0].cards,C.players[1].cards).vp; return S.current===0?sc[0]-sc[1]:sc[1]-sc[0];} const iters=24; let score=0; for(let i=0;i<iters;i++){const C=cloneState(S); applyTake(C,idx); const w=randomPlayout(C); score += (w===S.current?1:w===2?0.5:0);} return score/iters;}
+function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) return null; if(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2 && (strategy!=="random" || Math.random()<0.2)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
+ if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=evalMove(S,idx,strategy); if(v>bestV){bestV=v;best=idx;}} return best;}
+function simulateOne(startPlayer,strA,strB){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
+ const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true},{cards:[],joker:true}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],modernSwap:0}};
+ let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
+ const vpA=score.vp[0], vpB=score.vp[1]; const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA===vpB?"draw":(vpA>vpB?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Pareggio punti":"Punti");
+ return {vpA,vpB,margin:vpB-vpA,winner,winBy,score,events:S.events};}
+function renderRows(tbody,rows){tbody.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td>${r[2]!==undefined?`<td>${r[2]}</td>`:""}</tr>`).join("");}
+function renderHistogram(margins){const buckets=new Map(); for(let x=-20;x<=20;x+=4) buckets.set(`${x}..${x+3}`,0); buckets.set("<=-21",0); buckets.set(">=21",0); for(const m of margins){if(m<=-21)buckets.set("<=-21",buckets.get("<=-21")+1); else if(m>=21)buckets.set(">=21",buckets.get(">=21")+1); else {const b=Math.floor((m+20)/4),s=-20+b*4,key=`${s}..${s+3}`; buckets.set(key,buckets.get(key)+1);}} const total=Math.max(1,margins.length),maxN=Math.max(1,...buckets.values()); document.getElementById("marginHist").innerHTML=[...buckets.entries()].map(([k,v])=>`<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${Math.round(100*v/maxN)}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`).join("");}
+async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getElementById("games").value)||1000)); const sA=document.getElementById("playerStrategy").value, sB=document.getElementById("aiStrategy").value, sm=document.getElementById("startMode").value;
+ runBtn.disabled=true; const out=[]; for(let i=0;i<n;i++){const start=sm==="alternate"?(i%2):sm==="a"?0:1; out.push(simulateOne(start,sA,sB)); if((i+1)%20===0||i===n-1){statusEl.textContent=`Simulazione in corso: ${i+1}/${n}`; await new Promise(r=>setTimeout(r,0));}}
+ const aWin=out.filter(x=>x.winner==="a").length,bWin=out.filter(x=>x.winner==="b").length,draw=out.length-aWin-bWin;
+ document.getElementById("kGames").textContent=String(out.length); document.getElementById("kAWin").textContent=pct(aWin,out.length); document.getElementById("kBWin").textContent=pct(bWin,out.length); document.getElementById("kDraw").textContent=pct(draw,out.length);
+ const margins=out.map(x=>x.margin); renderHistogram(margins);
+ renderRows(document.getElementById("scoreTable"),[["VP medi",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["VP mediani",out.map(x=>x.vpA).sort((a,b)=>a-b)[Math.floor(out.length/2)],out.map(x=>x.vpB).sort((a,b)=>a-b)[Math.floor(out.length/2)]],["Margine medio (B-A)",avg(margins).toFixed(2),"—"],["Vittorie per Supremazia",pct(out.filter(x=>x.winBy.includes("Supremazia") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremazia") && x.winner==="b").length,out.length)]]);
+ renderRows(document.getElementById("eventTable"),[["Supremazia Tecnologica",pct(out.filter(x=>x.winBy==="Supremazia Tecnologica").length,out.length)],["Supremazia Militare",pct(out.filter(x=>x.winBy==="Supremazia Militare").length,out.length)],["Partite ai punti",pct(out.filter(x=>x.winBy==="Punti"||x.winBy==="Pareggio punti").length,out.length)],["Joker doppia presa AI A",avg(out.map(x=>x.events.jokerDouble[0])).toFixed(2)+" / partita"],["Joker doppia presa AI B",avg(out.map(x=>x.events.jokerDouble[1])).toFixed(2)+" / partita"],["Swap ordine Età Moderna",pct(out.filter(x=>x.events.modernSwap>0).length,out.length)]]);
+ renderRows(document.getElementById("vpTable"),[["VP Militari (♠)",avg(out.map(x=>x.score.military[0])).toFixed(2),avg(out.map(x=>x.score.military[1])).toFixed(2)],["VP Cultura (♦)",avg(out.map(x=>x.score.culture[0])).toFixed(2),avg(out.map(x=>x.score.culture[1])).toFixed(2)],["VP Tecnologia (♥)",avg(out.map(x=>x.score.techVP[0])).toFixed(2),avg(out.map(x=>x.score.techVP[1])).toFixed(2)],["VP Cibo (♣)",avg(out.map(x=>x.score.food[0])).toFixed(2),avg(out.map(x=>x.score.food[1])).toFixed(2)],["Malus 4 Re",avg(out.map(x=>x.score.kingPenalty[0])).toFixed(2),avg(out.map(x=>x.score.kingPenalty[1])).toFixed(2)],["Swords medi",avg(out.map(x=>x.score.swords[0])).toFixed(2),avg(out.map(x=>x.score.swords[1])).toFixed(2)],["Breakthrough medi",avg(out.map(x=>x.score.breakthrough[0])).toFixed(2),avg(out.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
+ statusEl.textContent=`Completato: ${n} partite.`; runBtn.disabled=false;}
+runBtn.addEventListener("click",runBatch);
+statusEl.textContent="Pronto. Core statistico allineato a jow.html (iframe su jow.html).";
 })();
 </script>
 </body>
