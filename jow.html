@@ -82,6 +82,9 @@
   <section class="panel">
     <div class="hd">Giocatori</div>
     <div class="bd">
+      <div class="row" style="margin-bottom:8px">
+        <button id="useJokerBtn">Usa Joker (2 prese)</button>
+      </div>
       <div class="status" id="statusGrid"></div>
       <div class="collections" id="collections"></div>
       <h3>Log</h3>
@@ -191,7 +194,7 @@ function flipNew(slots,acc){
   return f;
 }
 function swords(cards){
-  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4"].includes(c.rank)?1:["5","6","7","8"].includes(c.rank)?2:3),0);
+  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4","5"].includes(c.rank)?1:["6","7","8","9","10"].includes(c.rank)?2:3),0);
 }
 function techPairs(cards){
   const hs=cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]).sort((a,b)=>a-b);
@@ -263,7 +266,7 @@ function newGame(){
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
     players:[{name:"Giocatore 1",cards:[],joker:true,isAI:false},{name:"Giocatore 2 AI (Monte Carlo 3s)",cards:[],joker:true,isAI:true}],
-    lastTaken:null, pendingReplacement:null
+    lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
   log(`Nuova partita. Inizia ${G.players[G.current].name}.`);
@@ -285,84 +288,45 @@ function takeCard(idx){
   pl.cards.push(s.card);
   G.lastTaken={player:G.current,card:s.card};
 
+  G.picksLeftThisTurn=Math.max(0,G.picksLeftThisTurn-1);
   const accAfter=accessibility(G.tableau);
-  const newly=[];
-  for(let i=0;i<slots.length;i++) if(!slots[i].removed && !accBefore[i] && accAfter[i]) newly.push(i);
   const f=flipNew(slots,accAfter);
   log(`${pl.name} prende ${label(s.card)}.${f?` Rivela ${f} carte.`:""}`);
 
   const sup=checkSupremacy();
   if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
 
-  if(pl.joker && newly.length){
-    if(pl.isAI){
-      useAiReplacement(newly, s.card);
-      return;
-    }
-    G.pendingReplacement={player:G.current,indices:newly,originCard:s.card};
-    askReplacement();
-    return;
-  }
+  if(G.age==="modern" && G.modernSwapStillAvailable) G.modernSwapStillAvailable=false;
   endTurnOrAge();
 }
 
-function useAiReplacement(indices, originCard){
-  const pl=G.players[G.current];
-  let bestIdx=indices[0], bestScore=-Infinity;
-  for(const i of indices){
-    const c=G.tableau.slots[i].card;
-    const score=(c.suit==="S"?3:0)+(c.suit==="H"?2:0)+RANK_VAL[c.rank]/13;
-    if(score>bestScore){bestScore=score; bestIdx=i;}
-  }
-  const slot=G.tableau.slots[bestIdx];
-  pl.joker=false;
-  pl.cards.pop();
-  pl.cards.push(slot.card);
-  slot.card=originCard;
-  slot.faceDown=false;
-  log(`${pl.name} usa il Joker (Replacement): prende ${label(pl.cards[pl.cards.length-1])} e rimette ${label(originCard)} nel tableau.`);
-  const sup=checkSupremacy();
-  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
-  endTurnOrAge();
+function canUseJokerDouble(player=G.current){
+  return !G.ended && G.current===player && G.players[player].joker && G.picksLeftThisTurn===1 && !G.pendingSwapChoice;
+}
+function useJokerDouble(player=G.current){
+  if(!canUseJokerDouble(player)) return false;
+  G.players[player].joker=false;
+  G.picksLeftThisTurn=2;
+  log(`${G.players[player].name} usa il Joker: 2 prese in questo turno.`);
+  return true;
 }
 
-function askReplacement(){
-  const p=G.pendingReplacement; if(!p) return;
-  const d=document.getElementById("modal");
-  d.innerHTML=`<h3>Wonder: Replacement</h3><p>Usare il Joker per prendere una carta appena sbloccata e rimettere ${label(p.originCard)} nel suo posto?</p><div class='optRow'><button id='skip'>No</button>${p.indices.map(i=>`<button data-i='${i}'>${label(G.tableau.slots[i].card)}</button>`).join("")}</div>`;
-  d.showModal();
-  d.querySelector("#skip").onclick=()=>{d.close();G.pendingReplacement=null; endTurnOrAge();};
-  d.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{
-    const i=+b.dataset.i; const slot=G.tableau.slots[i];
-    const pl=G.players[G.current];
-    pl.joker=false;
-    pl.cards.pop();
-    pl.cards.push(slot.card);
-    slot.card=p.originCard;
-    slot.faceDown=false;
-    log(`${pl.name} usa il Joker (Replacement): prende ${label(pl.cards[pl.cards.length-1])} e rimette ${label(p.originCard)} nel tableau.`);
-    G.pendingReplacement=null; d.close();
-    const sup=checkSupremacy();
-    if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
-    endTurnOrAge();
-  });
-}
-
-function maybeSeizeInitiative(nextFirst){
+function maybeModernSwap(nextFirst){
   const second=1-nextFirst;
   const pl=G.players[second];
+  G.modernSwapStillAvailable=true;
   if(!pl.joker) return Promise.resolve(nextFirst);
   if(pl.isAI){
     pl.joker=false;
-    log(`${pl.name} usa il Joker per Seize Initiative ed è primo nell'Età Moderna.`);
+    log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`);
     return Promise.resolve(second);
   }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
-    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole scartare il Joker per diventare primo? (Seize Initiative)</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, usa Joker</button></div>`;
+    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole usare il Joker per diventare primo? (scelta ordine turno)</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, usa Joker</button></div>`;
     d.showModal();
     d.querySelector("#no").onclick=()=>{d.close();resolve(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} usa il Joker per Seize Initiative ed è primo nell'Età Moderna.`); resolve(second);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`); resolve(second);};
   });
 }
 
@@ -397,6 +361,8 @@ function cloneGameState(){
     current:G.current,
     ended:G.ended,
     nextAgeFirst:G.nextAgeFirst,
+    picksLeftThisTurn:G.picksLeftThisTurn,
+    modernSwapStillAvailable:G.modernSwapStillAvailable,
     players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),
     tableau:{
       slots:G.tableau.slots.map(s=>({...s})),
@@ -418,18 +384,13 @@ function checkSupremacySim(S){
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
-function maybeReplaceSim(S,player,newly,originCard){
-  if(!S.players[player].joker||!newly.length) return;
-  let pick=newly[0], best=-Infinity;
-  for(const i of newly){const c=S.tableau.slots[i].card; const score=(c.suit==="S"?3:0)+(c.suit==="H"?2:0)+RANK_VAL[c.rank]/13; if(score>best){best=score;pick=i;}}
-  const pl=S.players[player], slot=S.tableau.slots[pick];
-  pl.joker=false; pl.cards.pop(); pl.cards.push(slot.card); slot.card=originCard; slot.faceDown=false;
-}
 function advanceAgeSim(S){
   if(S.age==="ancient"){
     const second=1-S.nextAgeFirst;
+    S.modernSwapStillAvailable=true;
     if(S.players[second].joker) S.players[second].joker=false, S.current=second;
     else S.current=S.nextAgeFirst;
+    S.picksLeftThisTurn=1;
     S.age="modern";
     S.tableau=buildTableau("modern",S.decks.modern);
     return;
@@ -442,28 +403,38 @@ function playRandomTurn(S){
   for(let i=0;i<S.tableau.slots.length;i++){
     const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
   }
-  if(!moves.length){S.current=1-S.current; return;}
+  if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; return;}
+  if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){
+    S.players[S.current].joker=false;
+    S.picksLeftThisTurn=2;
+  }
   const idx=moves[Math.floor(Math.random()*moves.length)], slot=S.tableau.slots[idx], p=S.players[S.current];
   slot.removed=true; p.cards.push(slot.card);
-  const accAfter=accessibilitySim(S.tableau), newly=[];
-  for(let i=0;i<S.tableau.slots.length;i++) if(!S.tableau.slots[i].removed && !acc[i] && accAfter[i]) newly.push(i);
+  S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
+  const accAfter=accessibilitySim(S.tableau);
   flipNewSim(S.tableau.slots,accAfter);
-  maybeReplaceSim(S,S.current,newly,slot.card);
   const sup=checkSupremacySim(S); if(sup!==null){S.ended=true; S.winner=sup; return;}
-  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S); else S.current=1-S.current;
+  if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false;
+  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
+  else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
 }
 function simulateFromMove(firstIdx){
   const S=cloneGameState();
   const slot=S.tableau.slots[firstIdx], p=S.players[S.current];
   const acc=accessibilitySim(S.tableau);
   if(!acc[firstIdx]||slot.removed||slot.faceDown) return 0;
+  if(S.players[S.current].joker && S.picksLeftThisTurn===1){
+    S.players[S.current].joker=false;
+    S.picksLeftThisTurn=2;
+  }
   slot.removed=true; p.cards.push(slot.card);
-  const accAfter=accessibilitySim(S.tableau), newly=[];
-  for(let i=0;i<S.tableau.slots.length;i++) if(!S.tableau.slots[i].removed && !acc[i] && accAfter[i]) newly.push(i);
+  S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
+  const accAfter=accessibilitySim(S.tableau);
   flipNewSim(S.tableau.slots,accAfter);
-  maybeReplaceSim(S,S.current,newly,slot.card);
   const sup=checkSupremacySim(S); if(sup!==null) return sup===1?1:0;
-  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S); else S.current=1-S.current;
+  if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false;
+  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
+  else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
   let guard=500;
   while(!S.ended && guard-->0) playRandomTurn(S);
   if(S.winner!==undefined) return S.winner===1?1:0;
@@ -484,10 +455,11 @@ function scoreFor(S,i){
 
 function maybeRunAiTurn(){
   if(aiTimer){clearTimeout(aiTimer); aiTimer=null;}
-  if(!G||G.ended||G.pendingReplacement) return;
+  if(!G||G.ended||G.pendingSwapChoice) return;
   if(!G.players[G.current].isAI) return;
   aiTimer=setTimeout(()=>{
     if(!G||G.ended||G.current!==1) return;
+    if(canUseJokerDouble(1)) useJokerDouble(1);
     log("AI Monte Carlo sta pensando (3s)...");
     const idx=aiSelectMove();
     if(idx!==null) takeCard(idx);
@@ -498,10 +470,11 @@ async function endTurnOrAge(){
   const slots=G.tableau.slots;
   if(slots.every(s=>s.removed)){
     if(G.age==="ancient"){
-      const start=await maybeSeizeInitiative(G.nextAgeFirst);
+      const start=await maybeModernSwap(G.nextAgeFirst);
       G.age="modern";
       G.tableau=buildTableau("modern",G.decks.modern);
       G.current=start;
+      G.picksLeftThisTurn=1;
       log(`Fine Età Antica. Inizia Età Moderna con ${G.players[G.current].name}.`);
       render(); return;
     }
@@ -512,7 +485,10 @@ async function endTurnOrAge(){
     log(w===null?"Pareggio." : `🏆 Vince ${G.players[w].name} ai punti.`);
     render(); return;
   }
-  G.current=1-G.current;
+  if(G.picksLeftThisTurn<=0){
+    G.picksLeftThisTurn=1;
+    G.current=1-G.current;
+  }
   render();
 }
 
@@ -524,7 +500,11 @@ function render(){
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>techPairs(p.cards));
-  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Breakthroughs: ${tp[0]} / ${tp[1]}</div><div class='pill'>Joker: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
+  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Breakthroughs: ${tp[0]} / ${tp[1]}</div><div class='pill'>Joker: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Prese residue turno: ${G.picksLeftThisTurn}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
+
+  const useBtn=document.getElementById("useJokerBtn");
+  useBtn.disabled=!canUseJokerDouble(0);
+  useBtn.onclick=()=>{ if(useJokerDouble(0)) render(); };
 
   const col=document.getElementById("collections");
   col.innerHTML="";
@@ -556,6 +536,7 @@ function render(){
 }
 
 document.getElementById("newGameBtn").onclick=()=>newGame();
+document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
 newGame();
 </script>
 </body>
