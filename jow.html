@@ -27,6 +27,7 @@
     .tableauWrap{overflow:auto}
     .tableau{position:relative; margin:0 auto}
     .card{position:absolute; width:78px; height:110px; border-radius:14px; border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s; text-align:center}
+    .card::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);pointer-events:none}
     .card .big{font-size:21px; font-weight:760; line-height:1}
     .card .small{position:absolute; top:6px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.78); font-weight:600; letter-spacing:.3px; white-space:nowrap}
     .card .cornerR{position:absolute; top:6px; right:7px; font-size:11px; color:rgba(255,255,255,.78)}
@@ -37,6 +38,8 @@
     .accessible::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0) 60%);pointer-events:none;z-index:1}
     .blocked{filter:saturate(.85) brightness(.9); box-shadow:0 6px 12px rgba(0,0,0,.35); transform:translateY(2px) scale(.985); cursor:not-allowed}
     .blocked::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 55%);pointer-events:none;z-index:1}
+    .overlapped{box-shadow:0 12px 22px rgba(0,0,0,.48),0 0 0 1px rgba(15,23,42,.95)}
+    .covering{box-shadow:0 16px 30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
     .removed{display:none}
     .sS{background:linear-gradient(180deg,#7f1d1d,#450a0a); color:#fee2e2}
     .sH{background:linear-gradient(180deg,#fef08a,#facc15); color:#422006}
@@ -112,6 +115,7 @@ const TABLEAU_MODEL={
   ]
 };
 let G=null;
+let aiTimer=null;
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function makeDeck(){
@@ -124,7 +128,7 @@ function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
 function cardClass(c){return `s${c.suit}`;}
 
 function layout(model){
-  const w=78,h=110,v=42,hStep=42;
+  const w=78,h=110,v=42,hStep=84;
   const allX=model.flatMap(r=>r.xs);
   const minX=Math.min(...allX), maxX=Math.max(...allX);
   const width=w+(maxX-minX)*hStep;
@@ -158,15 +162,21 @@ function buildCovering(rows){
   }
   return coveredBy;
 }
+function buildCoveredBy(covering){
+  const coveredBy=Array.from({length:covering.length},()=>[]);
+  for(let i=0;i<covering.length;i++) for(const c of covering[i]) coveredBy[c].push(i);
+  return coveredBy;
+}
 function buildTableau(age,deck){
   const model=TABLEAU_MODEL[age], geom=layout(model), slots=[];
   const rows=buildRows(model);
+  const covering=buildCovering(rows);
   for(const p of geom.pos){
     const card=deck.pop();
     const faceDown=model[p.row].faceDown;
     slots.push({card,removed:false,faceDown,row:p.row,col:p.col,gridX:p.gridX,x:p.x,y:p.y});
   }
-  return {slots,geom,coveredBy:buildCovering(rows)};
+  return {slots,geom,coveredBy:covering,coveredByRev:buildCoveredBy(covering)};
 }
 function accessibility(tableau){
   const {slots,coveredBy}=tableau;
@@ -252,7 +262,7 @@ function newGame(){
   G={
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
-    players:[{name:"Giocatore 1",cards:[],joker:true},{name:"Giocatore 2",cards:[],joker:true}],
+    players:[{name:"Giocatore 1",cards:[],joker:true,isAI:false},{name:"Giocatore 2 AI (Monte Carlo 3s)",cards:[],joker:true,isAI:true}],
     lastTaken:null, pendingReplacement:null
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
@@ -285,10 +295,34 @@ function takeCard(idx){
   if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
 
   if(pl.joker && newly.length){
+    if(pl.isAI){
+      useAiReplacement(newly, s.card);
+      return;
+    }
     G.pendingReplacement={player:G.current,indices:newly,originCard:s.card};
     askReplacement();
     return;
   }
+  endTurnOrAge();
+}
+
+function useAiReplacement(indices, originCard){
+  const pl=G.players[G.current];
+  let bestIdx=indices[0], bestScore=-Infinity;
+  for(const i of indices){
+    const c=G.tableau.slots[i].card;
+    const score=(c.suit==="S"?3:0)+(c.suit==="H"?2:0)+RANK_VAL[c.rank]/13;
+    if(score>bestScore){bestScore=score; bestIdx=i;}
+  }
+  const slot=G.tableau.slots[bestIdx];
+  pl.joker=false;
+  pl.cards.pop();
+  pl.cards.push(slot.card);
+  slot.card=originCard;
+  slot.faceDown=false;
+  log(`${pl.name} usa il Joker (Replacement): prende ${label(pl.cards[pl.cards.length-1])} e rimette ${label(originCard)} nel tableau.`);
+  const sup=checkSupremacy();
+  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
   endTurnOrAge();
 }
 
@@ -318,6 +352,11 @@ function maybeSeizeInitiative(nextFirst){
   const second=1-nextFirst;
   const pl=G.players[second];
   if(!pl.joker) return Promise.resolve(nextFirst);
+  if(pl.isAI){
+    pl.joker=false;
+    log(`${pl.name} usa il Joker per Seize Initiative ed è primo nell'Età Moderna.`);
+    return Promise.resolve(second);
+  }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
     d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole scartare il Joker per diventare primo? (Seize Initiative)</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, usa Joker</button></div>`;
@@ -325,6 +364,134 @@ function maybeSeizeInitiative(nextFirst){
     d.querySelector("#no").onclick=()=>{d.close();resolve(nextFirst);};
     d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} usa il Joker per Seize Initiative ed è primo nell'Età Moderna.`); resolve(second);};
   });
+}
+
+function aiSelectMove(){
+  const start=performance.now();
+  const budget=3000;
+  const acc=accessibility(G.tableau);
+  const options=[];
+  for(let i=0;i<G.tableau.slots.length;i++){
+    const s=G.tableau.slots[i];
+    if(acc[i]&&!s.removed&&!s.faceDown) options.push(i);
+  }
+  if(!options.length) return null;
+  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
+  let ptr=0;
+  while(performance.now()-start<budget){
+    const idx=options[ptr++%options.length];
+    const res=simulateFromMove(idx);
+    const st=stats.get(idx); st.n++; st.w+=res;
+  }
+  let best=options[0], bestVal=-Infinity;
+  for(const [idx,st] of stats.entries()){
+    const v=st.w/Math.max(1,st.n);
+    if(v>bestVal){bestVal=v;best=idx;}
+  }
+  return best;
+}
+
+function cloneGameState(){
+  return {
+    age:G.age,
+    current:G.current,
+    ended:G.ended,
+    nextAgeFirst:G.nextAgeFirst,
+    players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),
+    tableau:{
+      slots:G.tableau.slots.map(s=>({...s})),
+      coveredBy:G.tableau.coveredBy.map(a=>a.slice())
+    },
+    decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
+  };
+}
+function accessibilitySim(T){
+  const {slots,coveredBy}=T;
+  return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));
+}
+function checkSupremacySim(S){
+  const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>techPairs(p.cards));
+  if(tp[0]>=4) return 0;
+  if(tp[1]>=4) return 1;
+  if(sw[0]-sw[1]>10) return 0;
+  if(sw[1]-sw[0]>10) return 1;
+  return null;
+}
+function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
+function maybeReplaceSim(S,player,newly,originCard){
+  if(!S.players[player].joker||!newly.length) return;
+  let pick=newly[0], best=-Infinity;
+  for(const i of newly){const c=S.tableau.slots[i].card; const score=(c.suit==="S"?3:0)+(c.suit==="H"?2:0)+RANK_VAL[c.rank]/13; if(score>best){best=score;pick=i;}}
+  const pl=S.players[player], slot=S.tableau.slots[pick];
+  pl.joker=false; pl.cards.pop(); pl.cards.push(slot.card); slot.card=originCard; slot.faceDown=false;
+}
+function advanceAgeSim(S){
+  if(S.age==="ancient"){
+    const second=1-S.nextAgeFirst;
+    if(S.players[second].joker) S.players[second].joker=false, S.current=second;
+    else S.current=S.nextAgeFirst;
+    S.age="modern";
+    S.tableau=buildTableau("modern",S.decks.modern);
+    return;
+  }
+  S.ended=true;
+}
+function playRandomTurn(S){
+  const acc=accessibilitySim(S.tableau);
+  const moves=[];
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
+  }
+  if(!moves.length){S.current=1-S.current; return;}
+  const idx=moves[Math.floor(Math.random()*moves.length)], slot=S.tableau.slots[idx], p=S.players[S.current];
+  slot.removed=true; p.cards.push(slot.card);
+  const accAfter=accessibilitySim(S.tableau), newly=[];
+  for(let i=0;i<S.tableau.slots.length;i++) if(!S.tableau.slots[i].removed && !acc[i] && accAfter[i]) newly.push(i);
+  flipNewSim(S.tableau.slots,accAfter);
+  maybeReplaceSim(S,S.current,newly,slot.card);
+  const sup=checkSupremacySim(S); if(sup!==null){S.ended=true; S.winner=sup; return;}
+  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S); else S.current=1-S.current;
+}
+function simulateFromMove(firstIdx){
+  const S=cloneGameState();
+  const slot=S.tableau.slots[firstIdx], p=S.players[S.current];
+  const acc=accessibilitySim(S.tableau);
+  if(!acc[firstIdx]||slot.removed||slot.faceDown) return 0;
+  slot.removed=true; p.cards.push(slot.card);
+  const accAfter=accessibilitySim(S.tableau), newly=[];
+  for(let i=0;i<S.tableau.slots.length;i++) if(!S.tableau.slots[i].removed && !acc[i] && accAfter[i]) newly.push(i);
+  flipNewSim(S.tableau.slots,accAfter);
+  maybeReplaceSim(S,S.current,newly,slot.card);
+  const sup=checkSupremacySim(S); if(sup!==null) return sup===1?1:0;
+  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S); else S.current=1-S.current;
+  let guard=500;
+  while(!S.ended && guard-->0) playRandomTurn(S);
+  if(S.winner!==undefined) return S.winner===1?1:0;
+  const sc0=scoreFor(S,0), sc1=scoreFor(S,1);
+  return sc1>=sc0?1:0;
+}
+function scoreFor(S,i){
+  const a=S.players[0].cards,b=S.players[1].cards;
+  const sw=[swords(a),swords(b)], tech=[techPairs(a),techPairs(b)];
+  let vp=[0,0];
+  if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
+  vp[0]+=foodVP(a)+tech[0]*2; vp[1]+=foodVP(b)+tech[1]*2;
+  if(hasFourKings(a)) vp[0]-=5; if(hasFourKings(b)) vp[1]-=5;
+  const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
+  [12,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
+  return vp[i];
+}
+
+function maybeRunAiTurn(){
+  if(aiTimer){clearTimeout(aiTimer); aiTimer=null;}
+  if(!G||G.ended||G.pendingReplacement) return;
+  if(!G.players[G.current].isAI) return;
+  aiTimer=setTimeout(()=>{
+    if(!G||G.ended||G.current!==1) return;
+    log("AI Monte Carlo sta pensando (3s)...");
+    const idx=aiSelectMove();
+    if(idx!==null) takeCard(idx);
+  },120);
 }
 
 async function endTurnOrAge(){
@@ -377,12 +544,15 @@ function render(){
   for(let i=0;i<slots.length;i++){
     const s=slots[i];
     const e=document.createElement("div");
-    e.className=`card ${s.removed?"removed":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!s.removed?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!s.removed?"open accessible":""} ${!acc[i]&&!s.removed&&!s.faceDown?"blocked":""}`;
+    const hasChildren=(G.tableau.coveredBy[i]||[]).some(c=>!slots[c].removed);
+    const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!slots[p].removed);
+    e.className=`card ${s.removed?"removed":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!s.removed?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!s.removed?"open accessible":""} ${!acc[i]&&!s.removed&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
     e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
     e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='small'>${SUIT_NAME[s.card.suit]}</div><div class='cornerR'>${s.row+1}-${s.col+1}</div><div class='big'>${label(s.card)}</div>`;
     e.onclick=()=>takeCard(i);
     t.appendChild(e);
   }
+  maybeRunAiTurn();
 }
 
 document.getElementById("newGameBtn").onclick=()=>newGame();
