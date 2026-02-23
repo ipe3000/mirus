@@ -84,9 +84,35 @@ function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAge
 function advanceAge(S){if(S.age==="ancient"){const second=1-S.nextAgeFirst; S.modernSwapStillAvailable=true; if(S.players[second].joker){S.players[second].joker=false; S.current=second; S.events.modernSwap++;} else S.current=S.nextAgeFirst; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
 function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false; if(S.tableau.slots.every(s=>s.removed)) advanceAge(S); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
 function randomPlayout(S){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=moves[Math.floor(Math.random()*moves.length)]; applyTake(S,idx);} if(S.winner!==undefined) return S.winner; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; return sc[0]===sc[1]?2:(sc[0]>sc[1]?0:1);}
-function evalMove(S,idx,strategy){if(strategy==="random") return Math.random(); if(strategy==="greedy"){const C=cloneState(S); applyTake(C,idx); const sc=scoreFromCards(C.players[0].cards,C.players[1].cards).vp; return S.current===0?sc[0]-sc[1]:sc[1]-sc[0];} const iters=24; let score=0; for(let i=0;i<iters;i++){const C=cloneState(S); applyTake(C,idx); const w=randomPlayout(C); score += (w===S.current?1:w===2?0.5:0);} return score/iters;}
+function remainingOpenCards(S){return S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);}
+function monteCarloIters(S,movesCount){
+ let iters=48;
+ if(S.age==="modern") iters+=16;
+ const left=remainingOpenCards(S);
+ if(left<=12) iters+=24;
+ if(left<=7) iters+=32;
+ if(movesCount<=5) iters=Math.round(iters*1.2);
+ if(movesCount<=3) iters=Math.round(iters*1.25);
+ return Math.max(48,iters);
+}
+function evalMove(S,idx,strategy,movesCount){
+ if(strategy==="random") return Math.random();
+ if(strategy==="greedy"){
+  const C=cloneState(S); applyTake(C,idx);
+  const sc=scoreFromCards(C.players[0].cards,C.players[1].cards).vp;
+  return S.current===0?sc[0]-sc[1]:sc[1]-sc[0];
+ }
+ const iters=monteCarloIters(S,movesCount);
+ let score=0;
+ for(let i=0;i<iters;i++){
+  const C=cloneState(S); applyTake(C,idx);
+  const w=randomPlayout(C);
+  score += (w===S.current?1:w===2?0.5:0);
+ }
+ return score/iters;
+}
 function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) return null; if(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2 && (strategy!=="random" || Math.random()<0.2)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
- if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=evalMove(S,idx,strategy); if(v>bestV){bestV=v;best=idx;}} return best;}
+ if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=evalMove(S,idx,strategy,moves.length); if(v>bestV){bestV=v;best=idx;}} return best;}
 function simulateOne(startPlayer,strA,strB){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
  const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true},{cards:[],joker:true}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],modernSwap:0}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
