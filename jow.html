@@ -201,15 +201,12 @@ function flipNew(slots,acc){
 function swords(cards){
   return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4","5"].includes(c.rank)?1:["6","7","8","9","10"].includes(c.rank)?2:3),0);
 }
-function techPairs(cards){
-  const hs=cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]).sort((a,b)=>a-b);
-  let pairs=0,run=1;
-  for(let i=1;i<hs.length;i++){
-    if(hs[i]===hs[i-1]+1) run++;
-    else if(hs[i]!==hs[i-1]){pairs+=Math.floor(run/2); run=1;}
-  }
-  if(hs.length) pairs+=Math.floor(run/2);
-  return pairs;
+function breakthroughCount(cards){
+  const hs=[...new Set(cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]))].sort((a,b)=>a-b);
+  if(hs.length<2) return 0;
+  let links=0;
+  for(let i=1;i<hs.length;i++) if(hs[i]===hs[i-1]+1) links++;
+  return links;
 }
 function foodVP(cards){
   const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
@@ -240,7 +237,7 @@ function diamondSequences(cards){
 function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
-  const tech0=techPairs(p0), tech1=techPairs(p1);
+  const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   let vp0=0,vp1=0;
   if(s0>s1) vp0+=5; else if(s1>s0) vp1+=5;
   vp0+=foodVP(p0)+tech0*2; vp1+=foodVP(p1)+tech1*2;
@@ -254,7 +251,7 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const [a,b]=G.players.map(p=>p.cards);
-  const sw=[swords(a),swords(b)], tp=[techPairs(a),techPairs(b)];
+  const sw=[swords(a),swords(b)], tp=[breakthroughCount(a),breakthroughCount(b)];
   if(tp[0]>=4) return {winner:0,reason:"Supremazia Tecnologica (4+ Breakthrough)"};
   if(tp[1]>=4) return {winner:1,reason:"Supremazia Tecnologica (4+ Breakthrough)"};
   if(sw[0]-sw[1]>10) return {winner:0,reason:"Supremazia Militare (>10 Swords di vantaggio)"};
@@ -381,7 +378,7 @@ function accessibilitySim(T){
   return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));
 }
 function checkSupremacySim(S){
-  const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>techPairs(p.cards));
+  const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards));
   if(tp[0]>=4) return 0;
   if(tp[1]>=4) return 1;
   if(sw[0]-sw[1]>10) return 0;
@@ -448,7 +445,7 @@ function simulateFromMove(firstIdx){
 }
 function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
-  const sw=[swords(a),swords(b)], tech=[techPairs(a),techPairs(b)];
+  const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
   vp[0]+=foodVP(a)+tech[0]*2; vp[1]+=foodVP(b)+tech[1]*2;
@@ -504,7 +501,7 @@ function render(){
   document.getElementById("tableauInfo").textContent=`Carte rimanenti: ${G.tableau.slots.filter(s=>!s.removed).length}`;
 
   const sg=document.getElementById("statusGrid");
-  const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>techPairs(p.cards));
+  const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
   sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Breakthroughs: ${tp[0]} / ${tp[1]}</div><div class='pill'>Joker: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Prese residue turno: ${G.picksLeftThisTurn}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
