@@ -254,8 +254,8 @@ function checkSupremacy(){
   const sw=[swords(a),swords(b)], tp=[breakthroughCount(a),breakthroughCount(b)];
   if(tp[0]>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ Heart pairs)"};
   if(tp[1]>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ Heart pairs)"};
-  if(sw[0]-sw[1]>10) return {winner:0,reason:"Supremazia Militare (>10 Swords di vantaggio)"};
-  if(sw[1]-sw[0]>10) return {winner:1,reason:"Supremazia Militare (>10 Swords di vantaggio)"};
+  if(sw[0]-sw[1]>=9) return {winner:0,reason:"Supremazia Militare (>=9 Swords di vantaggio)"};
+  if(sw[1]-sw[0]>=9) return {winner:1,reason:"Supremazia Militare (>=9 Swords di vantaggio)"};
   return null;
 }
 
@@ -381,8 +381,8 @@ function checkSupremacySim(S){
   const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards));
   if(tp[0]>=5) return 0;
   if(tp[1]>=5) return 1;
-  if(sw[0]-sw[1]>10) return 0;
-  if(sw[1]-sw[0]>10) return 1;
+  if(sw[0]-sw[1]>=9) return 0;
+  if(sw[1]-sw[0]>=9) return 1;
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
