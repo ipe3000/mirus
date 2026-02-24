@@ -206,6 +206,7 @@ function breakthroughCount(cards){
   if(hs.length<2) return 0;
   let links=0;
   for(let i=1;i<hs.length;i++) if(hs[i]===hs[i-1]+1) links++;
+  if(hs.includes(1) && hs.includes(13)) links++; // A-K conta come coppia adiacente
   return links;
 }
 function foodVP(cards){
