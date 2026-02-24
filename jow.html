@@ -212,8 +212,8 @@ function foodVP(cards){
   const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
   return Math.floor(v/5);
 }
-function hasFourKings(cards){
-  return ["S","D","H","C"].every(s=>cards.some(c=>c.suit===s&&c.rank==="K"));
+function hasCalamityMalus(cards){
+  return cards.filter(c=>c.rank==="K").length>=3;
 }
 function diamondSequences(cards){
   const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank]));
@@ -241,7 +241,7 @@ function scoreGame(){
   let vp0=0,vp1=0;
   if(s0>s1) vp0+=5; else if(s1>s0) vp1+=5;
   vp0+=foodVP(p0)+tech0*2; vp1+=foodVP(p1)+tech1*2;
-  if(hasFourKings(p0)) vp0-=5; if(hasFourKings(p1)) vp1-=5;
+  if(hasCalamityMalus(p0)) vp0-=5; if(hasCalamityMalus(p1)) vp1-=5;
 
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
@@ -449,7 +449,7 @@ function scoreFor(S,i){
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
   vp[0]+=foodVP(a)+tech[0]*2; vp[1]+=foodVP(b)+tech[1]*2;
-  if(hasFourKings(a)) vp[0]-=5; if(hasFourKings(b)) vp[1]-=5;
+  if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   [12,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
   return vp[i];
