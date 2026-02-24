@@ -253,8 +253,8 @@ function scoreGame(){
 function checkSupremacy(){
   const [a,b]=G.players.map(p=>p.cards);
   const sw=[swords(a),swords(b)], tp=[breakthroughCount(a),breakthroughCount(b)];
-  if(tp[0]>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ Heart pairs)"};
-  if(tp[1]>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ Heart pairs)"};
+  if(tp[0]>=4) return {winner:0,reason:"Supremazia Tecnologica (4+ Heart pairs)"};
+  if(tp[1]>=4) return {winner:1,reason:"Supremazia Tecnologica (4+ Heart pairs)"};
   if(sw[0]-sw[1]>=8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   if(sw[1]-sw[0]>=8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   return null;
@@ -380,8 +380,8 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards));
-  if(tp[0]>=5) return 0;
-  if(tp[1]>=5) return 1;
+  if(tp[0]>=4) return 0;
+  if(tp[1]>=4) return 1;
   if(sw[0]-sw[1]>=8) return 0;
   if(sw[1]-sw[0]>=8) return 1;
   return null;
