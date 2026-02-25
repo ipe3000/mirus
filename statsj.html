@@ -70,7 +70,8 @@ function makeDeck(){const cards=[];let id=0; for(const s of SUITS){for(const r o
 function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
 function buildRows(model){let idx=0; return model.map((cfg,row)=>cfg.xs.map((gridX,col)=>({idx:idx++,row,col,gridX})));}
 function buildCovering(rows){const total=rows.reduce((a,r)=>a+r.length,0), coveredBy=Array.from({length:total},()=>[]); for(let r=0;r<rows.length-1;r++){const upper=rows[r],lower=rows[r+1],map=new Map(lower.map(s=>[s.gridX,s.idx])); for(const slot of upper){const c1=map.get(slot.gridX-0.5),c2=map.get(slot.gridX+0.5); if(c1!==undefined) coveredBy[slot.idx].push(c1); if(c2!==undefined) coveredBy[slot.idx].push(c2);}} return coveredBy;}
-function buildTableau(age,deck){const model=TABLEAU_MODEL[age], rows=buildRows(model), covering=buildCovering(rows), slots=[]; for(let row=0;row<model.length;row++){for(let col=0;col<model[row].xs.length;col++){slots.push({card:deck.pop(),removed:false,faceDown:model[row].faceDown,row,col});}} return {slots,coveredBy:covering};}
+function buildCoveredByRev(coveredBy){const rev=Array.from({length:coveredBy.length},()=>[]); for(let i=0;i<coveredBy.length;i++) for(const c of coveredBy[i]) rev[c].push(i); return rev;}
+function buildTableau(age,deck){const model=TABLEAU_MODEL[age], rows=buildRows(model), covering=buildCovering(rows), slots=[]; for(let row=0;row<model.length;row++){for(let col=0;col<model[row].xs.length;col++){slots.push({card:deck.pop(),removed:false,faceDown:model[row].faceDown,row,col});}} return {slots,coveredBy:covering,coveredByRev:buildCoveredByRev(covering)};}
 function accessibility(T){const {slots,coveredBy}=T; return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));}
 function flipNew(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed && slots[i].faceDown && acc[i]) slots[i].faceDown=false;}
 function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4","5"].includes(c.rank)?1:["6","7","8","9","10"].includes(c.rank)?2:3),0);}
@@ -93,13 +94,34 @@ function ucbSelect(stats,total,c=0.9){
 }
 function diamondAdjacency(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); let adj=0; for(const v of owned){if(owned.has(v===13?1:v+1)) adj++;} return adj;}
 function kingRisk(cards){const n=cards.filter(c=>c.rank==="K").length; if(n>=3) return -3; if(n===2) return -0.6; return 0;}
+function staticTakeValue(S,player,card){
+ const me=S.players[player].cards;
+ const next=me.concat([card]);
+ const dSw=swords(next)-swords(me);
+ const dBt=breakthroughCount(next)-breakthroughCount(me);
+ const dFood=foodVP(next)-foodVP(me);
+ const dDia=diamondAdjacency(next)-diamondAdjacency(me);
+ const dKing=kingRisk(next)-kingRisk(me);
+ return dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4;
+}
 function cheapEvalTake(S,player,idx){
  const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
  const me=S.players[player].cards, opp=S.players[1-player].cards, next=me.concat([slot.card]);
  const dSw=swords(next)-swords(me), dBt=breakthroughCount(next)-breakthroughCount(me), dFood=foodVP(next)-foodVP(me);
  const dDia=diamondAdjacency(next)-diamondAdjacency(me), dKing=kingRisk(next)-kingRisk(me);
  const deny=(slot.card.suit==="S"?0.2:0)+(slot.card.suit==="H"?0.15:0), pressure=Math.max(0,swords(opp)-swords(me)-5)*0.05;
- return dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4+deny+pressure;
+ const baseScore=dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4+deny+pressure;
+ let revealBonus=0;
+ const rev=S.tableau.coveredByRev?.[idx]||[];
+ for(const upperIdx of rev){
+  const upper=S.tableau.slots[upperIdx];
+  if(!upper || upper.removed || !upper.faceDown) continue;
+  const blockers=S.tableau.coveredBy[upperIdx]||[];
+  const becomesAccessible=blockers.every(b=>b===idx || S.tableau.slots[b].removed);
+  if(!becomesAccessible) continue;
+  revealBonus+=0.35*staticTakeValue(S,player,upper.card);
+ }
+ return baseScore+revealBonus;
 }
 function choosePlayoutMove(S,eps=0.2){
  const moves=legalMoves(S); if(!moves.length) return null;
@@ -107,7 +129,7 @@ function choosePlayoutMove(S,eps=0.2){
  let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
 }
 function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const vals=moves.map(i=>cheapEvalTake(S,S.current,i)).sort((a,b)=>b-a); return vals[1]>0.6;}
-function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
+function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice()),coveredByRev:S.tableau.coveredByRev.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
 function finalReward(S,perspective){if(S.winner!==undefined) return S.winner===perspective?1:0; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; if(sc[perspective]>sc[1-perspective]) return 1; if(sc[perspective]===sc[1-perspective]) return 0.5; return 0;}
 function chooseModernSwap(S,nextFirst){
  const second=1-nextFirst; if(!S.players[second].joker) return nextFirst;
