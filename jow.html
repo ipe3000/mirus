@@ -320,9 +320,27 @@ function maybeModernSwap(nextFirst){
   G.modernSwapStillAvailable=true;
   if(!pl.joker) return Promise.resolve(nextFirst);
   if(pl.isAI){
-    pl.joker=false;
-    log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`);
-    return Promise.resolve(second);
+    const noSwapState=cloneGameState();
+    noSwapState.age="modern";
+    noSwapState.current=nextFirst;
+    noSwapState.picksLeftThisTurn=1;
+    noSwapState.tableau=buildTableau("modern",noSwapState.decks.modern);
+    noSwapState.modernSwapStillAvailable=true;
+    const swapState=cloneGameState();
+    swapState.players[second].joker=false;
+    swapState.age="modern";
+    swapState.current=second;
+    swapState.picksLeftThisTurn=1;
+    swapState.tableau=buildTableau("modern",swapState.decks.modern);
+    swapState.modernSwapStillAvailable=true;
+    const evNo=estimateStateEV(noSwapState,1,16);
+    const evSwap=estimateStateEV(swapState,1,16);
+    if(evSwap>evNo+0.03){
+      pl.joker=false;
+      log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`);
+      return Promise.resolve(second);
+    }
+    return Promise.resolve(nextFirst);
   }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
@@ -334,28 +352,21 @@ function maybeModernSwap(nextFirst){
 }
 
 function aiSelectMove(){
-  const start=performance.now();
-  const budget=3000;
-  const acc=accessibility(G.tableau);
-  const options=[];
-  for(let i=0;i<G.tableau.slots.length;i++){
-    const s=G.tableau.slots[i];
-    if(acc[i]&&!s.removed&&!s.faceDown) options.push(i);
-  }
-  if(!options.length) return null;
-  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
-  let ptr=0;
-  while(performance.now()-start<budget){
-    const idx=options[ptr++%options.length];
-    const res=simulateFromMove(idx);
-    const st=stats.get(idx); st.n++; st.w+=res;
-  }
-  let best=options[0], bestVal=-Infinity;
+  const decision=chooseActionWithOptionalJoker();
+  if(!decision) return null;
+  if(decision.useJoker) useJokerDouble(1);
+  return decision.firstIdx;
+}
+
+function ucbSelect(stats,total,c=0.9){
+  let bestIdx=null,best=-Infinity;
   for(const [idx,st] of stats.entries()){
-    const v=st.w/Math.max(1,st.n);
-    if(v>bestVal){bestVal=v;best=idx;}
+    if(st.n===0) return idx;
+    const mean=st.w/st.n;
+    const ucb=mean+c*Math.sqrt(Math.log(total)/st.n);
+    if(ucb>best){best=ucb;bestIdx=idx;}
   }
-  return best;
+  return bestIdx;
 }
 
 function cloneGameState(){
@@ -387,6 +398,58 @@ function checkSupremacySim(S){
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
+function diamondAdjacency(cards){
+  const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank]));
+  let adj=0;
+  for(const v of owned){ if(owned.has(v===13?1:v+1)) adj++; }
+  return adj;
+}
+function kingRisk(cards){
+  const kings=cards.filter(c=>c.rank==="K").length;
+  if(kings>=3) return -3;
+  if(kings===2) return -0.6;
+  return 0;
+}
+function cheapEvalTake(S,player,idx){
+  const slot=S.tableau.slots[idx];
+  if(!slot || slot.removed || slot.faceDown) return -Infinity;
+  const me=S.players[player].cards, opp=S.players[1-player].cards;
+  const next=me.concat([slot.card]);
+  const dSw=swords(next)-swords(me);
+  const dBt=breakthroughCount(next)-breakthroughCount(me);
+  const dFood=foodVP(next)-foodVP(me);
+  const dDia=diamondAdjacency(next)-diamondAdjacency(me);
+  const dKing=kingRisk(next)-kingRisk(me);
+  const denyS=(slot.card.suit==="S"?0.2:0)+(slot.card.suit==="H"?0.15:0);
+  const oppSwPressure=Math.max(0,swords(opp)-swords(me)-5)*0.05;
+  return dSw*1.2 + dBt*1.6 + dFood*1.0 + dDia*0.45 + dKing*1.4 + denyS + oppSwPressure;
+}
+function choosePlayoutMove(S,eps=0.12){
+  const moves=[];
+  const acc=accessibilitySim(S.tableau);
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
+  }
+  if(!moves.length) return null;
+  if(Math.random()<eps) return moves[Math.floor(Math.random()*moves.length)];
+  let best=moves[0], bestV=-Infinity;
+  for(const idx of moves){
+    const v=cheapEvalTake(S,S.current,idx);
+    if(v>bestV){bestV=v;best=idx;}
+  }
+  return best;
+}
+function shouldUseJokerInPlayout(S){
+  if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false;
+  const moves=[];
+  const acc=accessibilitySim(S.tableau);
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
+  }
+  if(moves.length<2) return false;
+  const vals=moves.map(idx=>cheapEvalTake(S,S.current,idx)).sort((a,b)=>b-a);
+  return vals[1]>0.6;
+}
 function advanceAgeSim(S){
   if(S.age==="ancient"){
     const second=1-S.nextAgeFirst;
@@ -401,17 +464,26 @@ function advanceAgeSim(S){
   S.ended=true;
 }
 function playRandomTurn(S){
-  const acc=accessibilitySim(S.tableau);
-  const moves=[];
-  for(let i=0;i<S.tableau.slots.length;i++){
-    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
-  }
+  const moves=legalMovesSim(S);
   if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; return;}
-  if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){
+  if(shouldUseJokerInPlayout(S)){
     S.players[S.current].joker=false;
     S.picksLeftThisTurn=2;
   }
-  const idx=moves[Math.floor(Math.random()*moves.length)], slot=S.tableau.slots[idx], p=S.players[S.current];
+  const idx=choosePlayoutMove(S,0.14);
+  if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;return;}
+  applyTakeSim(S,idx);
+}
+function legalMovesSim(S){
+  const acc=accessibilitySim(S.tableau);
+  const res=[];
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) res.push(i);
+  }
+  return res;
+}
+function applyTakeSim(S,idx){
+  const slot=S.tableau.slots[idx], p=S.players[S.current];
   slot.removed=true; p.cards.push(slot.card);
   S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
   const accAfter=accessibilitySim(S.tableau);
@@ -421,28 +493,75 @@ function playRandomTurn(S){
   if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
   else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
 }
-function simulateFromMove(firstIdx){
-  const S=cloneGameState();
-  const slot=S.tableau.slots[firstIdx], p=S.players[S.current];
+function rewardForState(S,aiPlayer=1){
+  if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
+  const scAi=scoreFor(S,aiPlayer), scOp=scoreFor(S,1-aiPlayer);
+  if(scAi>scOp) return 1;
+  if(scAi===scOp) return 0.5;
+  return 0;
+}
+function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
+  const S=cloneState(baseState);
+  const slot=S.tableau.slots[firstIdx];
   const acc=accessibilitySim(S.tableau);
   if(!acc[firstIdx]||slot.removed||slot.faceDown) return 0;
-  if(S.players[S.current].joker && S.picksLeftThisTurn===1){
-    S.players[S.current].joker=false;
-    S.picksLeftThisTurn=2;
-  }
-  slot.removed=true; p.cards.push(slot.card);
-  S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
-  const accAfter=accessibilitySim(S.tableau);
-  flipNewSim(S.tableau.slots,accAfter);
-  const sup=checkSupremacySim(S); if(sup!==null) return sup===1?1:0;
-  if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false;
-  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
-  else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
+  applyTakeSim(S,firstIdx);
+  if(S.ended) return rewardForState(S,aiPlayer);
   let guard=500;
   while(!S.ended && guard-->0) playRandomTurn(S);
-  if(S.winner!==undefined) return S.winner===1?1:0;
-  const sc0=scoreFor(S,0), sc1=scoreFor(S,1);
-  return sc1>=sc0?1:0;
+  return rewardForState(S,aiPlayer);
+}
+function cloneState(S){
+  return {
+    age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
+    modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),
+    tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice())},
+    decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},winner:S.winner
+  };
+}
+function estimateStateEV(baseState,aiPlayer=1,rollouts=20){
+  const options=legalMovesSim(baseState);
+  if(!options.length) return rewardForState(baseState,aiPlayer);
+  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
+  let total=0;
+  for(let i=0;i<rollouts;i++){
+    const idx=ucbSelect(stats,++total,0.9);
+    const res=simulateFromMoveState(baseState,idx,aiPlayer);
+    const st=stats.get(idx); st.n++; st.w+=res;
+  }
+  let best=0;
+  for(const st of stats.values()) best=Math.max(best,st.w/Math.max(1,st.n));
+  return best;
+}
+function selectMoveUcb(baseState,budgetMs=3000,aiPlayer=1){
+  const start=performance.now();
+  const options=legalMovesSim(baseState);
+  if(!options.length) return {idx:null,mean:0};
+  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
+  let total=0;
+  while(performance.now()-start<budgetMs){
+    const idx=ucbSelect(stats,++total,0.9);
+    const res=simulateFromMoveState(baseState,idx,aiPlayer);
+    const st=stats.get(idx); st.n++; st.w+=res;
+  }
+  let best=options[0],bestVal=-Infinity;
+  for(const [idx,st] of stats.entries()){
+    const v=st.w/Math.max(1,st.n);
+    if(v>bestVal){bestVal=v;best=idx;}
+  }
+  return {idx:best,mean:bestVal};
+}
+function chooseActionWithOptionalJoker(){
+  const base=cloneGameState();
+  const noJ=selectMoveUcb(base,2200,1);
+  const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
+  if(!canJ || noJ.idx===null) return {useJoker:false,firstIdx:noJ.idx};
+  const yesState=cloneState(base);
+  yesState.players[yesState.current].joker=false;
+  yesState.picksLeftThisTurn=2;
+  const yes=selectMoveUcb(yesState,700,1);
+  if(yes.idx!==null && yes.mean>noJ.mean+0.02) return {useJoker:true,firstIdx:yes.idx};
+  return {useJoker:false,firstIdx:noJ.idx};
 }
 function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
@@ -462,7 +581,6 @@ function maybeRunAiTurn(){
   if(!G.players[G.current].isAI) return;
   aiTimer=setTimeout(()=>{
     if(!G||G.ended||G.current!==1) return;
-    if(canUseJokerDouble(1)) useJokerDouble(1);
     log("AI Monte Carlo sta pensando (3s)...");
     const idx=aiSelectMove();
     if(idx!==null) takeCard(idx);
