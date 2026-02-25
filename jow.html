@@ -293,10 +293,10 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
-  if(f1.hLinks>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
-  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
+  if(f0.hLinks>=6) return {winner:0,reason:"Supremazia Tecnologica (6+ coppie Hearts)"};
+  if(f1.hLinks>=6) return {winner:1,reason:"Supremazia Tecnologica (6+ coppie Hearts)"};
+  if(f0.sw - f1.sw >= 9) return {winner:0,reason:"Supremazia Militare (>=9 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 9) return {winner:1,reason:"Supremazia Militare (>=9 Swords di vantaggio)"};
   return null;
 }
 
@@ -436,10 +436,10 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.hLinks>=5) return 0;
-  if(f1.hLinks>=5) return 1;
-  if(f0.sw - f1.sw >= 8) return 0;
-  if(f1.sw - f0.sw >= 8) return 1;
+  if(f0.hLinks>=6) return 0;
+  if(f1.hLinks>=6) return 1;
+  if(f0.sw - f1.sw >= 9) return 0;
+  if(f1.sw - f0.sw >= 9) return 1;
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
