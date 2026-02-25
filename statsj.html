@@ -137,14 +137,43 @@ function chooseMoveUcb(S,moves,K=3){
  for(const [idx,st] of stats.entries()){const v=st.w/Math.max(1,st.n); if(v>bestV){bestV=v;best=idx;}}
  return best;
 }
+function bestSingleValue(S,moves){
+ let best=-Infinity;
+ for(const i of moves) best=Math.max(best,cheapEvalTake(S,S.current,i));
+ return best;
+}
+function bestTwoPickValue(S,moves){
+ const p=S.current;
+ const firstCand=moves
+  .map(i=>({i,v:cheapEvalTake(S,p,i)}))
+  .sort((a,b)=>b.v-a.v)
+  .slice(0,3);
+
+ let best=-Infinity;
+ for(const {i:first,v:v1} of firstCand){
+  const C=cloneState(S);
+  C.players[p].joker=false;
+  C.picksLeftThisTurn=2;
+
+  applyTake(C,first);
+
+  const m2=legalMoves(C);
+  let v2=0;
+  if(m2.length){
+   v2=-Infinity;
+   for(const j of m2) v2=Math.max(v2,cheapEvalTake(C,p,j));
+   if(!isFinite(v2)) v2=0;
+  }
+
+  best=Math.max(best,v1+0.9*v2);
+ }
+ return best;
+}
 function maybeUseJokerNow(S,moves){
  if(!(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2)) return false;
- let evNo=0,evYes=0;
- for(let i=0;i<4;i++){
-  const nS=cloneState(S); const nMv=chooseMoveUcb(nS,legalMoves(nS),3); if(nMv!==null){applyTake(nS,nMv);} evNo+=randomPlayout(nS,S.current);
-  const yS=cloneState(S); yS.players[yS.current].joker=false; yS.picksLeftThisTurn=2; const yMv=chooseMoveUcb(yS,legalMoves(yS),3); if(yMv!==null){applyTake(yS,yMv);} evYes+=randomPlayout(yS,S.current);
- }
- return (evYes/4)>(evNo/4)+0.03;
+ const v1=bestSingleValue(S,moves);
+ const v2=bestTwoPickValue(S,moves);
+ return v2>v1+0.35;
 }
 function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) return null; if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; if(strategy==="greedy"){let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;}
  if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
