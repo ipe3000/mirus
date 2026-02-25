@@ -203,9 +203,16 @@ function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
 function popcount13(x){ x>>>=0; let c=0; while(x){ x&=x-1; c++; } return c; }
 function heartLinksFromMask(mask){
   mask&=MASK13;
-  const adj=popcount13(mask&(mask<<1));
-  const wrap=((mask&1) && (mask&(1<<12))) ? 1 : 0;
-  return adj+wrap;
+  // Coppie tecnologiche valide (Cuori): A-2, 3-4, 5-6, 7-8, 9-10, J-Q, K-A.
+  // Regola: prima carta dispari, seconda immediatamente superiore,
+  // con eccezioni esplicite A-2 e K-A.
+  const pairs=[[1,2],[3,4],[5,6],[7,8],[9,10],[11,12],[13,1]];
+  let links=0;
+  for(const [a,b] of pairs){
+    const bitA=1<<(a-1), bitB=1<<(b-1);
+    if((mask&bitA) && (mask&bitB)) links++;
+  }
+  return links;
 }
 function diamondAdjFromMask(mask){
   mask&=MASK13;
@@ -243,12 +250,10 @@ function swords(cards){
   return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);
 }
 function breakthroughCount(cards){
-  const hs=[...new Set(cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]))].sort((a,b)=>a-b);
-  if(hs.length<2) return 0;
-  let links=0;
-  for(let i=1;i<hs.length;i++) if(hs[i]===hs[i-1]+1) links++;
-  if(hs.includes(1) && hs.includes(13)) links++; // A-K conta come coppia adiacente
-  return links;
+  const hMask=cards
+    .filter(c=>c.suit==="H")
+    .reduce((m,c)=>m|bitOfRank(c.rank),0);
+  return heartLinksFromMask(hMask);
 }
 function foodVP(cards){
   const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
@@ -293,8 +298,8 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=7) return {winner:0,reason:"Supremazia Tecnologica (7+ coppie Hearts)"};
-  if(f1.hLinks>=7) return {winner:1,reason:"Supremazia Tecnologica (7+ coppie Hearts)"};
+  if(f0.hLinks>=7) return {winner:0,reason:"Supremazia Tecnologica (7 coppie tecnologiche valide)"};
+  if(f1.hLinks>=7) return {winner:1,reason:"Supremazia Tecnologica (7 coppie tecnologiche valide)"};
   if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
   if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
   return null;
