@@ -333,8 +333,8 @@ function maybeModernSwap(nextFirst){
     swapState.picksLeftThisTurn=1;
     swapState.tableau=buildTableau("modern",swapState.decks.modern);
     swapState.modernSwapStillAvailable=true;
-    const evNo=estimateStateEV(noSwapState,1,16);
-    const evSwap=estimateStateEV(swapState,1,16);
+    const evNo=estimatePolicyEV(noSwapState,1,80);
+    const evSwap=estimatePolicyEV(swapState,1,80);
     if(evSwap>evNo+0.03){
       pl.joker=false;
       log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`);
@@ -450,12 +450,37 @@ function shouldUseJokerInPlayout(S){
   const vals=moves.map(idx=>cheapEvalTake(S,S.current,idx)).sort((a,b)=>b-a);
   return vals[1]>0.6;
 }
+function chooseModernSwapSim(S,nextFirst,rollouts=6){
+  const second=1-nextFirst;
+  if(!S.players[second].joker) return nextFirst;
+  const noSwapState=cloneState(S);
+  noSwapState.age="modern";
+  noSwapState.current=nextFirst;
+  noSwapState.picksLeftThisTurn=1;
+  noSwapState.tableau=buildTableau("modern",noSwapState.decks.modern);
+  noSwapState.modernSwapStillAvailable=true;
+
+  const swapState=cloneState(S);
+  swapState.players[second].joker=false;
+  swapState.age="modern";
+  swapState.current=second;
+  swapState.picksLeftThisTurn=1;
+  swapState.tableau=buildTableau("modern",swapState.decks.modern);
+  swapState.modernSwapStillAvailable=true;
+
+  const evNo=estimatePolicyEV(noSwapState,second,rollouts);
+  const evSwap=estimatePolicyEV(swapState,second,rollouts);
+  if(evSwap>evNo+0.03){
+    S.players[second].joker=false;
+    return second;
+  }
+  return nextFirst;
+}
 function advanceAgeSim(S){
   if(S.age==="ancient"){
-    const second=1-S.nextAgeFirst;
+    const start=chooseModernSwapSim(S,S.nextAgeFirst,6);
     S.modernSwapStillAvailable=true;
-    if(S.players[second].joker) S.players[second].joker=false, S.current=second;
-    else S.current=S.nextAgeFirst;
+    S.current=start;
     S.picksLeftThisTurn=1;
     S.age="modern";
     S.tableau=buildTableau("modern",S.decks.modern);
@@ -518,6 +543,16 @@ function cloneState(S){
     tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice())},
     decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},winner:S.winner
   };
+}
+function estimatePolicyEV(startState,aiPlayer=1,rollouts=64){
+  let sum=0;
+  for(let i=0;i<rollouts;i++){
+    const C=cloneState(startState);
+    let guard=600;
+    while(!C.ended && guard-->0) playRandomTurn(C);
+    sum+=rewardForState(C,aiPlayer);
+  }
+  return sum/Math.max(1,rollouts);
 }
 function estimateStateEV(baseState,aiPlayer=1,rollouts=20){
   const options=legalMovesSim(baseState);
