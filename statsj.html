@@ -61,6 +61,7 @@
 (function(){
 const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
+const MASK13=(1<<13)-1;
 const TABLEAU_MODEL={ancient:[{faceDown:false,xs:[2,4]},{faceDown:true,xs:[1.5,2.5,3.5,4.5]},{faceDown:false,xs:[0,1,2,3,4,5,6]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[1,2,3,4,5]}],modern:[{faceDown:false,xs:[2,5]},{faceDown:true,xs:[1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[0,1,2,3,4,5,6,7]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5,6.5]},{faceDown:false,xs:[1,2,3,4,5,6]}]};
 const runBtn=document.getElementById("runBtn"), statusEl=document.getElementById("status");
 const pct=(x,n)=>n?`${(100*x/n).toFixed(1)}%`:"0.0%"; const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
@@ -92,34 +93,80 @@ function ucbSelect(stats,total,c=0.9){
  }
  return bestIdx;
 }
-function diamondAdjacency(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); let adj=0; for(const v of owned){if(owned.has(v===13?1:v+1)) adj++;} return adj;}
-function kingRisk(cards){const n=cards.filter(c=>c.rank==="K").length; if(n>=3) return -3; if(n===2) return -0.6; return 0;}
+function bitOfRank(rank){return 1<<(RANK_VAL[rank]-1);}
+function popcount13(x){x>>>=0; let c=0; while(x){x&=x-1;c++;} return c;}
+function heartLinksFromMask(mask){mask&=MASK13; const adj=popcount13(mask&(mask<<1)); const wrap=((mask&1)&&(mask&(1<<12)))?1:0; return adj+wrap;}
+function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13)|(mask>>>12); return popcount13(mask&rot);}
+function swordValue(card){const v=RANK_VAL[card.rank]; return (v<=5)?1:(v<=10)?2:3;}
+function clubValue(card){if(card.rank==="A") return 1; if(card.rank==="J"||card.rank==="Q"||card.rank==="K") return 10; return RANK_VAL[card.rank];}
+function kingRiskFromCount(k){if(k>=3) return -3; if(k===2) return -0.6; return 0;}
+function updateFeat(feat,card){
+ if(card.suit==="S") feat.sw+=swordValue(card);
+ if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hLinks=heartLinksFromMask(feat.hMask);}
+ if(card.suit==="C") feat.cSum+=clubValue(card);
+ if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}
+ if(card.rank==="K") feat.kCount+=1;
+}
 function staticTakeValue(S,player,card){
- const me=S.players[player].cards;
- const next=me.concat([card]);
- const dSw=swords(next)-swords(me);
- const dBt=breakthroughCount(next)-breakthroughCount(me);
- const dFood=foodVP(next)-foodVP(me);
- const dDia=diamondAdjacency(next)-diamondAdjacency(me);
- const dKing=kingRisk(next)-kingRisk(me);
+ const f=S.players[player].feat;
+ const dSw=(card.suit==="S")?swordValue(card):0;
+ let dBt=0;
+ if(card.suit==="H"){
+  const nm=(f.hMask|bitOfRank(card.rank))&MASK13;
+  dBt=heartLinksFromMask(nm)-f.hLinks;
+ }
+ let dFood=0;
+ if(card.suit==="C"){
+  const before=Math.floor(f.cSum/5);
+  const after=Math.floor((f.cSum+clubValue(card))/5);
+  dFood=after-before;
+ }
+ let dDia=0;
+ if(card.suit==="D"){
+  const nm=(f.dMask|bitOfRank(card.rank))&MASK13;
+  dDia=diamondAdjFromMask(nm)-f.dAdj;
+ }
+ const oldKR=kingRiskFromCount(f.kCount);
+ const newKR=kingRiskFromCount(f.kCount+(card.rank==="K"?1:0));
+ const dKing=newKR-oldKR;
  return dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4;
 }
 function cheapEvalTake(S,player,idx){
  const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
- const me=S.players[player].cards, opp=S.players[1-player].cards, next=me.concat([slot.card]);
- const dSw=swords(next)-swords(me), dBt=breakthroughCount(next)-breakthroughCount(me), dFood=foodVP(next)-foodVP(me);
- const dDia=diamondAdjacency(next)-diamondAdjacency(me), dKing=kingRisk(next)-kingRisk(me);
- const deny=(slot.card.suit==="S"?0.2:0)+(slot.card.suit==="H"?0.15:0), pressure=Math.max(0,swords(opp)-swords(me)-5)*0.05;
+ const card=slot.card;
+ const me=S.players[player].feat, opp=S.players[1-player].feat;
+ const dSw=(card.suit==="S")?swordValue(card):0;
+ let dBt=0;
+ if(card.suit==="H"){
+  const nm=(me.hMask|bitOfRank(card.rank))&MASK13;
+  dBt=heartLinksFromMask(nm)-me.hLinks;
+ }
+ let dFood=0;
+ if(card.suit==="C"){
+  const before=Math.floor(me.cSum/5);
+  const after=Math.floor((me.cSum+clubValue(card))/5);
+  dFood=after-before;
+ }
+ let dDia=0;
+ if(card.suit==="D"){
+  const nm=(me.dMask|bitOfRank(card.rank))&MASK13;
+  dDia=diamondAdjFromMask(nm)-me.dAdj;
+ }
+ const oldKR=kingRiskFromCount(me.kCount);
+ const newKR=kingRiskFromCount(me.kCount+(card.rank==="K"?1:0));
+ const dKing=newKR-oldKR;
+ const deny=(card.suit==="S"?0.2:0)+(card.suit==="H"?0.15:0), pressure=Math.max(0,opp.sw-me.sw-5)*0.05;
  const baseScore=dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4+deny+pressure;
  let revealBonus=0;
  const rev=S.tableau.coveredByRev?.[idx]||[];
  for(const upperIdx of rev){
   const upper=S.tableau.slots[upperIdx];
-  if(!upper || upper.removed || !upper.faceDown) continue;
+  if(!upper || upper.removed) continue;
   const blockers=S.tableau.coveredBy[upperIdx]||[];
   const becomesAccessible=blockers.every(b=>b===idx || S.tableau.slots[b].removed);
   if(!becomesAccessible) continue;
-  revealBonus+=0.35*staticTakeValue(S,player,upper.card);
+  const w=upper.faceDown?0.35:0.18;
+  revealBonus+=w*staticTakeValue(S,player,upper.card);
  }
  return baseScore+revealBonus;
 }
@@ -129,7 +176,7 @@ function choosePlayoutMove(S,eps=0.2){
  let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
 }
 function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const vals=moves.map(i=>cheapEvalTake(S,S.current,i)).sort((a,b)=>b-a); return vals[1]>0.6;}
-function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice()),coveredByRev:S.tableau.coveredByRev.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
+function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:{...p.feat}})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice()),coveredByRev:S.tableau.coveredByRev.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
 function finalReward(S,perspective){if(S.winner!==undefined) return S.winner===perspective?1:0; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; if(sc[perspective]>sc[1-perspective]) return 1; if(sc[perspective]===sc[1-perspective]) return 0.5; return 0;}
 function chooseModernSwap(S,nextFirst){
  const second=1-nextFirst; if(!S.players[second].joker) return nextFirst;
@@ -139,7 +186,7 @@ function chooseModernSwap(S,nextFirst){
  if(evYes>evNo+0.03){S.players[second].joker=false; S.events.modernSwap++; return second;} return nextFirst;
 }
 function advanceAge(S){if(S.age==="ancient"){const start=chooseModernSwap(S,S.nextAgeFirst); S.modernSwapStillAvailable=true; S.current=start; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
-function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false; if(S.tableau.slots.every(s=>s.removed)) advanceAge(S); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
+function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); updateFeat(S.players[S.current].feat,slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false; if(S.tableau.slots.every(s=>s.removed)) advanceAge(S); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
 function randomPlayout(S,perspective=S.current){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(shouldUseJokerInPlayout(S)){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=choosePlayoutMove(S,0.2); if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;continue;} applyTake(S,idx);} return finalReward(S,perspective);}
 function chooseMoveUcb(S,moves,K=3){
  const ordered=moves.map(i=>({idx:i,v:cheapEvalTake(S,S.current,i)})).sort((a,b)=>b.v-a.v);
@@ -201,7 +248,7 @@ function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) ret
  if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
  return chooseMoveUcb(S,legalMoves(S),3);}
 function simulateOne(startPlayer,strA,strB){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
- const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true},{cards:[],joker:true}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],modernSwap:0}};
+ const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},{cards:[],joker:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],modernSwap:0}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
  const vpA=score.vp[0], vpB=score.vp[1]; const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA===vpB?"draw":(vpA>vpB?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Pareggio punti":"Punti");
  return {vpA,vpB,margin:vpB-vpA,winner,winBy,score,events:S.events};}
