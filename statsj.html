@@ -247,11 +247,11 @@ function jokerReservePenalty(S,player){
  if(S.age!=="ancient") return 0;
 
  const second=1-S.nextAgeFirst;
- if(player!==second) return 0.10;
+ if(player!==second) return 0.25;
 
  const left=remainingCardsThisAge(S);
  const t=Math.min(1,Math.max(0,left/18));
- return 0.55*t;
+ return 0.30+0.80*t;
 }
 function canForceSupremacyWithTwoPicks(S,moves){
  const p=S.current;
