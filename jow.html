@@ -292,12 +292,11 @@ function scoreGame(){
   return {vp:[vp0,vp1], detail:{s:[s0,s1],tech:[tech0,tech1],seqs}};
 }
 function checkSupremacy(){
-  const [a,b]=G.players.map(p=>p.cards);
-  const sw=[swords(a),swords(b)], tp=[breakthroughCount(a),breakthroughCount(b)];
-  if(tp[0]>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
-  if(tp[1]>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
-  if(sw[0]-sw[1]>=8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
-  if(sw[1]-sw[0]>=8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
+  const f0=G.players[0].feat, f1=G.players[1].feat;
+  if(f0.hLinks>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
+  if(f1.hLinks>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ coppie Hearts)"};
+  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   return null;
 }
 
@@ -425,8 +424,8 @@ function cloneGameState(){
     players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
     tableau:{
       slots:G.tableau.slots.map(s=>({...s})),
-      coveredBy:G.tableau.coveredBy.map(a=>a.slice()),
-      coveredByRev:G.tableau.coveredByRev.map(a=>a.slice())
+      coveredBy:G.tableau.coveredBy,
+      coveredByRev:G.tableau.coveredByRev
     },
     decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
   };
@@ -436,11 +435,11 @@ function accessibilitySim(T){
   return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));
 }
 function checkSupremacySim(S){
-  const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards));
-  if(tp[0]>=5) return 0;
-  if(tp[1]>=5) return 1;
-  if(sw[0]-sw[1]>=8) return 0;
-  if(sw[1]-sw[0]>=8) return 1;
+  const f0=S.players[0].feat, f1=S.players[1].feat;
+  if(f0.hLinks>=5) return 0;
+  if(f1.hLinks>=5) return 1;
+  if(f0.sw - f1.sw >= 8) return 0;
+  if(f1.sw - f0.sw >= 8) return 1;
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
@@ -645,7 +644,7 @@ function cloneState(S){
     age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
     modernSwapStillAvailable:S.modernSwapStillAvailable,
     players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
-    tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice()),coveredByRev:S.tableau.coveredByRev.map(a=>a.slice())},
+    tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},
     decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},winner:S.winner
   };
 }
