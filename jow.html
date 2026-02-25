@@ -214,7 +214,7 @@ function diamondAdjFromMask(mask){
 }
 function swordValue(card){
   const v=RANK_VAL[card.rank];
-  return (v<=5) ? 1 : (v<=10) ? 2 : 3;
+  return (v<=9) ? 1 : 2;
 }
 function clubValue(card){
   if(card.rank==="A") return 1;
@@ -240,7 +240,7 @@ function updateFeat(feat,card){
   if(card.rank==="K") feat.kCount+=1;
 }
 function swords(cards){
-  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+(["A","2","3","4","5"].includes(c.rank)?1:["6","7","8","9","10"].includes(c.rank)?2:3),0);
+  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);
 }
 function breakthroughCount(cards){
   const hs=[...new Set(cards.filter(c=>c.suit==="H").map(c=>RANK_VAL[c.rank]))].sort((a,b)=>a-b);
@@ -295,8 +295,8 @@ function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
   if(f0.hLinks>=7) return {winner:0,reason:"Supremazia Tecnologica (7+ coppie Hearts)"};
   if(f1.hLinks>=7) return {winner:1,reason:"Supremazia Tecnologica (7+ coppie Hearts)"};
-  if(f0.sw - f1.sw >= 10) return {winner:0,reason:"Supremazia Militare (>=10 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 10) return {winner:1,reason:"Supremazia Militare (>=10 Swords di vantaggio)"};
+  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
   return null;
 }
 
@@ -438,8 +438,8 @@ function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
   if(f0.hLinks>=7) return 0;
   if(f1.hLinks>=7) return 1;
-  if(f0.sw - f1.sw >= 10) return 0;
-  if(f1.sw - f0.sw >= 10) return 1;
+  if(f0.sw - f1.sw >= 7) return 0;
+  if(f1.sw - f0.sw >= 7) return 1;
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
