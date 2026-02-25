@@ -246,12 +246,15 @@ function remainingCardsThisAge(S){
 function jokerReservePenalty(S,player){
  if(S.age!=="ancient") return 0;
 
- const second=1-S.nextAgeFirst;
- if(player!==second) return 0.10;
-
  const left=remainingCardsThisAge(S);
  const t=Math.min(1,Math.max(0,left/18));
- return 0.55*t;
+ const second=1-S.nextAgeFirst;
+
+ // Valore-opportunità del Joker in Antica: tenerlo per lo swap d'ordine in Moderna.
+ // Penalità base per tutti + extra per chi rischia di iniziare secondo la Moderna.
+ let penalty=0.40+0.70*t;
+ if(player===second) penalty+=0.35+0.45*t;
+ return penalty;
 }
 function canForceSupremacyWithTwoPicks(S,moves){
  const p=S.current;
@@ -286,6 +289,10 @@ function maybeUseJokerNow(S,moves){
  if(!(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2)) return false;
 
  if(canForceSupremacyWithTwoPicks(S,moves)) return true;
+
+ // In Antica evitiamo l'uso precoce del Joker salvo chiusure immediate: 
+ // aumenta la probabilità di conservarlo per lo swap in Moderna.
+ if(S.age==="ancient" && remainingCardsThisAge(S)>4) return false;
 
  const v1=bestSingleValue(S,moves);
  const v2=bestTwoPickValue(S,moves);
