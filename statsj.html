@@ -81,40 +81,74 @@ function diamondSequences(cards){const owned=new Set(cards.filter(c=>c.suit==="D
 function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], food=[foodVP(a),foodVP(b)], king=[hasCalamityMalus(a)?-5:0,hasCalamityMalus(b)?-5:0]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[8,0]; else if(sw[1]>sw[0]) military=[0,8]; vp[0]+=military[0]+food[0]+tech[0]*2+king[0]; vp[1]+=military[1]+food[1]+tech[1]*2+king[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; [12,6,3].forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,food,techVP:[tech[0]*2,tech[1]*2],culture,kingPenalty:king,swords:sw,breakthrough:tech};}
 function checkSupremacy(S){const sw=S.players.map(p=>swords(p.cards)), tp=S.players.map(p=>breakthroughCount(p.cards)); if(tp[0]>=5) return {winner:0,reason:"Supremazia Tecnologica (5+ coppie Hearts)"}; if(tp[1]>=5) return {winner:1,reason:"Supremazia Tecnologica (5+ coppie Hearts)"}; if(sw[0]-sw[1]>=8) return {winner:0,reason:"Supremazia Militare"}; if(sw[1]-sw[0]>=8) return {winner:1,reason:"Supremazia Militare"}; return null;}
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
+function ucbSelect(stats,total,c=0.9){
+ let bestIdx=null,best=-Infinity;
+ for(const [idx,st] of stats.entries()){
+  if(st.n===0) return idx;
+  const mean=st.w/st.n;
+  const ucb=mean+c*Math.sqrt(Math.log(total)/st.n);
+  if(ucb>best){best=ucb;bestIdx=idx;}
+ }
+ return bestIdx;
+}
+function diamondAdjacency(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); let adj=0; for(const v of owned){if(owned.has(v===13?1:v+1)) adj++;} return adj;}
+function kingRisk(cards){const n=cards.filter(c=>c.rank==="K").length; if(n>=3) return -3; if(n===2) return -0.6; return 0;}
+function cheapEvalTake(S,player,idx){
+ const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
+ const me=S.players[player].cards, opp=S.players[1-player].cards, next=me.concat([slot.card]);
+ const dSw=swords(next)-swords(me), dBt=breakthroughCount(next)-breakthroughCount(me), dFood=foodVP(next)-foodVP(me);
+ const dDia=diamondAdjacency(next)-diamondAdjacency(me), dKing=kingRisk(next)-kingRisk(me);
+ const deny=(slot.card.suit==="S"?0.2:0)+(slot.card.suit==="H"?0.15:0), pressure=Math.max(0,swords(opp)-swords(me)-5)*0.05;
+ return dSw*1.2+dBt*1.6+dFood*1.0+dDia*0.45+dKing*1.4+deny+pressure;
+}
+function choosePlayoutMove(S,eps=0.2){
+ const moves=legalMoves(S); if(!moves.length) return null;
+ if(Math.random()<eps) return moves[Math.floor(Math.random()*moves.length)];
+ let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
+}
+function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const vals=moves.map(i=>cheapEvalTake(S,S.current,i)).sort((a,b)=>b-a); return vals[1]>0.6;}
 function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy.map(a=>a.slice())},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
-function advanceAge(S){if(S.age==="ancient"){const second=1-S.nextAgeFirst; S.modernSwapStillAvailable=true; if(S.players[second].joker){S.players[second].joker=false; S.current=second; S.events.modernSwap++;} else S.current=S.nextAgeFirst; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
+function finalReward(S,perspective){if(S.winner!==undefined) return S.winner===perspective?1:0; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; if(sc[perspective]>sc[1-perspective]) return 1; if(sc[perspective]===sc[1-perspective]) return 0.5; return 0;}
+function chooseModernSwap(S,nextFirst){
+ const second=1-nextFirst; if(!S.players[second].joker) return nextFirst;
+ const noSwap=cloneState(S); noSwap.age="modern"; noSwap.current=nextFirst; noSwap.picksLeftThisTurn=1; noSwap.tableau=buildTableau("modern",noSwap.decks.modern); noSwap.modernSwapStillAvailable=true;
+ const swap=cloneState(S); swap.players[second].joker=false; swap.age="modern"; swap.current=second; swap.picksLeftThisTurn=1; swap.tableau=buildTableau("modern",swap.decks.modern); swap.modernSwapStillAvailable=true;
+ let evNo=0,evYes=0; for(let i=0;i<4;i++){evNo+=randomPlayout(cloneState(noSwap),second); evYes+=randomPlayout(cloneState(swap),second);} evNo/=4; evYes/=4;
+ if(evYes>evNo+0.03){S.players[second].joker=false; S.events.modernSwap++; return second;} return nextFirst;
+}
+function advanceAge(S){if(S.age==="ancient"){const start=chooseModernSwap(S,S.nextAgeFirst); S.modernSwapStillAvailable=true; S.current=start; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
 function applyTake(S,idx){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false; if(S.tableau.slots.every(s=>s.removed)) advanceAge(S); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
-function randomPlayout(S){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(S.players[S.current].joker && S.picksLeftThisTurn===1 && Math.random()<0.12){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=moves[Math.floor(Math.random()*moves.length)]; applyTake(S,idx);} if(S.winner!==undefined) return S.winner; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; return sc[0]===sc[1]?2:(sc[0]>sc[1]?0:1);}
-function remainingOpenCards(S){return S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);}
-function monteCarloIters(S,movesCount){
- let iters=38;
- if(S.age==="modern") iters+=12;
- const left=remainingOpenCards(S);
- if(left<=12) iters+=18;
- if(left<=7) iters+=24;
- if(movesCount<=5) iters=Math.round(iters*1.15);
- if(movesCount<=3) iters=Math.round(iters*1.2);
- return Math.max(38,iters);
-}
-function evalMove(S,idx,strategy,movesCount){
- if(strategy==="random") return Math.random();
- if(strategy==="greedy"){
+function randomPlayout(S,perspective=S.current){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(shouldUseJokerInPlayout(S)){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=choosePlayoutMove(S,0.2); if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;continue;} applyTake(S,idx);} return finalReward(S,perspective);}
+function chooseMoveUcb(S,moves,K=3){
+ const ordered=moves.map(i=>({idx:i,v:cheapEvalTake(S,S.current,i)})).sort((a,b)=>b.v-a.v);
+ const cand=ordered.slice(0,Math.min(K,ordered.length)).map(x=>x.idx);
+ if(moves.length>cand.length && Math.random()<0.1){const extra=moves.filter(m=>!cand.includes(m)); if(extra.length) cand.push(extra[Math.floor(Math.random()*extra.length)]);}
+ const left=S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);
+ let T=S.age==="ancient"?8:12; if(left<=10) T=18; if(left<=6) T=24;
+ const stats=new Map(cand.map(i=>[i,{n:0,w:0}]));
+ let total=0;
+ for(let t=0;t<T;t++){
+  const idx=ucbSelect(stats,++total,0.9);
   const C=cloneState(S); applyTake(C,idx);
-  const sc=scoreFromCards(C.players[0].cards,C.players[1].cards).vp;
-  return S.current===0?sc[0]-sc[1]:sc[1]-sc[0];
+  const r=randomPlayout(C,S.current);
+  const st=stats.get(idx); st.n++; st.w+=r;
  }
- const iters=monteCarloIters(S,movesCount);
- const baseState=cloneState(S); applyTake(baseState,idx);
- let score=0;
- for(let i=0;i<iters;i++){
-  const C=cloneState(baseState);
-  const w=randomPlayout(C);
-  score += (w===S.current?1:w===2?0.5:0);
- }
- return score/iters;
+ let best=cand[0],bestV=-Infinity;
+ for(const [idx,st] of stats.entries()){const v=st.w/Math.max(1,st.n); if(v>bestV){bestV=v;best=idx;}}
+ return best;
 }
-function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) return null; if(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2 && (strategy!=="random" || Math.random()<0.2)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
- if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=evalMove(S,idx,strategy,moves.length); if(v>bestV){bestV=v;best=idx;}} return best;}
+function maybeUseJokerNow(S,moves){
+ if(!(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2)) return false;
+ let evNo=0,evYes=0;
+ for(let i=0;i<4;i++){
+  const nS=cloneState(S); const nMv=chooseMoveUcb(nS,legalMoves(nS),3); if(nMv!==null){applyTake(nS,nMv);} evNo+=randomPlayout(nS,S.current);
+  const yS=cloneState(S); yS.players[yS.current].joker=false; yS.picksLeftThisTurn=2; const yMv=chooseMoveUcb(yS,legalMoves(yS),3); if(yMv!==null){applyTake(yS,yMv);} evYes+=randomPlayout(yS,S.current);
+ }
+ return (evYes/4)>(evNo/4)+0.03;
+}
+function chooseMove(S,strategy){const moves=legalMoves(S); if(!moves.length) return null; if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; if(strategy==="greedy"){let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;}
+ if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++;}
+ return chooseMoveUcb(S,legalMoves(S),3);}
 function simulateOne(startPlayer,strA,strB){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
  const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true},{cards:[],joker:true}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],modernSwap:0}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
