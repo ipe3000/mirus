@@ -294,7 +294,7 @@ function scoreGame(){
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   let vp0=0,vp1=0;
-  if(s0>s1) vp0+=8; else if(s1>s0) vp1+=8;
+  if(s0>s1) vp0+=6; else if(s1>s0) vp1+=6;
   vp0+=foodVP(p0)+tech0*3; vp1+=foodVP(p1)+tech1*3;
   if(hasCalamityMalus(p0)) vp0-=5; if(hasCalamityMalus(p1)) vp1-=5;
 
@@ -306,8 +306,8 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=3) return {winner:0,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"};
-  if(f1.hLinks>=3) return {winner:1,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"};
+  if(f0.hLinks>=2) return {winner:0,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
+  if(f1.hLinks>=2) return {winner:1,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
   if(f0.sw - f1.sw >= 6) return {winner:0,reason:"Supremazia Militare (>=6 Swords di vantaggio)"};
   if(f1.sw - f0.sw >= 6) return {winner:1,reason:"Supremazia Militare (>=6 Swords di vantaggio)"};
   return null;
@@ -449,8 +449,8 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.hLinks>=3) return 0;
-  if(f1.hLinks>=3) return 1;
+  if(f0.hLinks>=2) return 0;
+  if(f1.hLinks>=2) return 1;
   if(f0.sw - f1.sw >= 6) return 0;
   if(f1.sw - f0.sw >= 6) return 1;
   return null;
@@ -719,7 +719,7 @@ function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
-  if(sw[0]>sw[1]) vp[0]+=8; else if(sw[1]>sw[0]) vp[1]+=8;
+  if(sw[0]>sw[1]) vp[0]+=6; else if(sw[1]>sw[0]) vp[1]+=6;
   vp[0]+=foodVP(a)+tech[0]*3; vp[1]+=foodVP(b)+tech[1]*3;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
