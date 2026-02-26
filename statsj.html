@@ -80,13 +80,13 @@ function breakthroughCount(cards){
  const hMask=cards
   .filter(c=>c.suit==="H")
   .reduce((m,c)=>m|bitOfRank(c.rank),0);
- return heartLinksFromMask(hMask);
+ return techSequenceCountFromMask(hMask);
 }
 function foodVP(cards){const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0); return Math.floor(v/5);}
 function hasCalamityMalus(cards){return cards.filter(c=>c.rank==="K").length>=3;}
 function diamondSequences(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
-function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], food=[foodVP(a),foodVP(b)], king=[hasCalamityMalus(a)?-5:0,hasCalamityMalus(b)?-5:0]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[8,0]; else if(sw[1]>sw[0]) military=[0,8]; vp[0]+=military[0]+food[0]+tech[0]*2+king[0]; vp[1]+=military[1]+food[1]+tech[1]*2+king[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; [12,6,3].forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,food,techVP:[tech[0]*2,tech[1]*2],culture,kingPenalty:king,swords:sw,breakthrough:tech};}
-function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f0.hLinks>=4) return {winner:0,reason:"Supremazia Tecnologica (4 technological pairs valide)"}; if(f1.hLinks>=4) return {winner:1,reason:"Supremazia Tecnologica (4 technological pairs valide)"}; if(f0.sw-f1.sw>=7) return {winner:0,reason:"Supremazia Militare"}; if(f1.sw-f0.sw>=7) return {winner:1,reason:"Supremazia Militare"}; return null;}
+function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], food=[foodVP(a),foodVP(b)], king=[hasCalamityMalus(a)?-5:0,hasCalamityMalus(b)?-5:0]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[8,0]; else if(sw[1]>sw[0]) military=[0,8]; vp[0]+=military[0]+food[0]+tech[0]*3+king[0]; vp[1]+=military[1]+food[1]+tech[1]*3+king[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; [12,6,3].forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,food,techVP:[tech[0]*3,tech[1]*3],culture,kingPenalty:king,swords:sw,breakthrough:tech};}
+function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f0.hLinks>=3) return {winner:0,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"}; if(f1.hLinks>=3) return {winner:1,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"}; if(f0.sw-f1.sw>=6) return {winner:0,reason:"Supremazia Militare"}; if(f1.sw-f0.sw>=6) return {winner:1,reason:"Supremazia Militare"}; return null;}
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
 function ucbSelect(stats,total,c=0.9){
  let bestIdx=null,best=-Infinity;
@@ -100,14 +100,34 @@ function ucbSelect(stats,total,c=0.9){
 }
 function bitOfRank(rank){return 1<<(RANK_VAL[rank]-1);}
 function popcount13(x){x>>>=0; let c=0; while(x){x&=x-1;c++;} return c;}
-function heartLinksFromMask(mask){mask&=MASK13; const pairs=[[1,2],[3,4],[5,6],[7,8],[9,10],[11,12],[13,1]]; let links=0; for(const [a,b] of pairs){const bitA=1<<(a-1),bitB=1<<(b-1); if((mask&bitA)&&(mask&bitB)) links++;} return links;}
+function techSequenceCountFromMask(mask){
+ mask&=MASK13;
+ const triples=[];
+ for(let start=1;start<=13;start++){
+  const a=start;
+  const b=(start%13)+1;
+  const c=((start+1)%13)+1;
+  const t=(1<<(a-1))|(1<<(b-1))|(1<<(c-1));
+  if((mask&t)===t) triples.push(t);
+ }
+ if(!triples.length) return 0;
+ let best=0;
+ function dfs(i,used,count){
+  if(i>=triples.length){ if(count>best) best=count; return; }
+  dfs(i+1,used,count);
+  const t=triples[i];
+  if((used&t)===0) dfs(i+1,used|t,count+1);
+ }
+ dfs(0,0,0);
+ return best;
+}
 function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13)|(mask>>>12); return popcount13(mask&rot);}
 function swordValue(card){const v=RANK_VAL[card.rank]; return (v<=9)?1:2;}
 function clubValue(card){if(card.rank==="A") return 1; if(card.rank==="J"||card.rank==="Q"||card.rank==="K") return 10; return RANK_VAL[card.rank];}
 function kingRiskFromCount(k){if(k>=3) return -3; if(k===2) return -0.6; return 0;}
 function updateFeat(feat,card){
  if(card.suit==="S") feat.sw+=swordValue(card);
- if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hLinks=heartLinksFromMask(feat.hMask);}
+ if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hLinks=techSequenceCountFromMask(feat.hMask);}
  if(card.suit==="C") feat.cSum+=clubValue(card);
  if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}
  if(card.rank==="K") feat.kCount+=1;
@@ -118,7 +138,7 @@ function staticTakeValue(S,player,card){
  let dBt=0;
  if(card.suit==="H"){
   const nm=(f.hMask|bitOfRank(card.rank))&MASK13;
-  dBt=heartLinksFromMask(nm)-f.hLinks;
+  dBt=techSequenceCountFromMask(nm)-f.hLinks;
  }
  let dFood=0;
  if(card.suit==="C"){
@@ -144,7 +164,7 @@ function cheapEvalTake(S,player,idx){
  let dBt=0;
  if(card.suit==="H"){
   const nm=(me.hMask|bitOfRank(card.rank))&MASK13;
-  dBt=heartLinksFromMask(nm)-me.hLinks;
+  dBt=techSequenceCountFromMask(nm)-me.hLinks;
  }
  let dFood=0;
  if(card.suit==="C"){
@@ -338,8 +358,8 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  document.getElementById("kGames").textContent=String(out.length); document.getElementById("kAWin").textContent=pct(aWin,out.length); document.getElementById("kBWin").textContent=pct(bWin,out.length); document.getElementById("kDraw").textContent=pct(draw,out.length);
  const margins=out.map(x=>x.margin); renderHistogram(margins);
  renderRows(document.getElementById("scoreTable"),[["VP medi",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["VP mediani",out.map(x=>x.vpA).sort((a,b)=>a-b)[Math.floor(out.length/2)],out.map(x=>x.vpB).sort((a,b)=>a-b)[Math.floor(out.length/2)]],["Margine medio (B-A)",avg(margins).toFixed(2),"—"],["Vittorie per Supremazia",pct(out.filter(x=>x.winBy.includes("Supremazia") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremazia") && x.winner==="b").length,out.length)]]);
- renderRows(document.getElementById("eventTable"),[["Supremazia Tecnologica",pct(out.filter(x=>x.winBy.includes("Supremazia Tecnologica")).length,out.length)],["Supremazia Militare",pct(out.filter(x=>x.winBy==="Supremazia Militare").length,out.length)],["Partite ai punti",pct(pointsOnly.length,out.length)],["Joker doppia presa AI A",avg(out.map(x=>x.events.jokerDouble[0])).toFixed(2)+" / partita"],["Joker doppia presa AI B",avg(out.map(x=>x.events.jokerDouble[1])).toFixed(2)+" / partita"],["Joker doppia presa AI A — Epica Antica",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[0])).toFixed(2)+" / partita"],["Joker doppia presa AI A — Epica Moderna",avg(out.map(x=>x.events.jokerDoubleByAge.modern[0])).toFixed(2)+" / partita"],["Joker doppia presa AI B — Epica Antica",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[1])).toFixed(2)+" / partita"],["Joker doppia presa AI B — Epica Moderna",avg(out.map(x=>x.events.jokerDoubleByAge.modern[1])).toFixed(2)+" / partita"],["Swap ordine Età Moderna",pct(out.filter(x=>x.events.modernSwap>0).length,out.length)],["Win-rate AI A/B (senza pareggi)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A e banda 95%",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Lettura statistica",significance]]);
- renderRows(document.getElementById("vpTable"),[["VP Militari (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["VP Cultura (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["VP Tecnologia (♥)",avg(pointsOnly.map(x=>x.score.techVP[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.techVP[1])).toFixed(2)],["VP Cibo (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Malus calamità (>=3 Re)",avg(pointsOnly.map(x=>x.score.kingPenalty[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.kingPenalty[1])).toFixed(2)],["Frequenza calamità (>=3 Re | solo partite ai punti)",`${pct(pointsOnly.filter(x=>x.score.kingPenalty[0]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`,`${pct(pointsOnly.filter(x=>x.score.kingPenalty[1]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`],["Swords medi",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Breakthrough medi",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
+ renderRows(document.getElementById("eventTable"),[["Supremazia Tecnologica",pct(out.filter(x=>x.winBy.includes("Supremazia Tecnologica")).length,out.length)],["Supremazia Militare",pct(out.filter(x=>x.winBy==="Supremazia Militare").length,out.length)],["Partite ai punti",pct(pointsOnly.length,out.length)],["Wonder Extra Turn AI A",avg(out.map(x=>x.events.jokerDouble[0])).toFixed(2)+" / partita"],["Wonder Extra Turn AI B",avg(out.map(x=>x.events.jokerDouble[1])).toFixed(2)+" / partita"],["Wonder Extra Turn AI A — Età Antica",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[0])).toFixed(2)+" / partita"],["Wonder Extra Turn AI A — Età Moderna",avg(out.map(x=>x.events.jokerDoubleByAge.modern[0])).toFixed(2)+" / partita"],["Wonder Extra Turn AI B — Età Antica",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[1])).toFixed(2)+" / partita"],["Wonder Extra Turn AI B — Età Moderna",avg(out.map(x=>x.events.jokerDoubleByAge.modern[1])).toFixed(2)+" / partita"],["Wonder Seize Initiative (Età Moderna)",pct(out.filter(x=>x.events.modernSwap>0).length,out.length)],["Win-rate AI A/B (senza pareggi)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A e banda 95%",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Lettura statistica",significance]]);
+ renderRows(document.getElementById("vpTable"),[["VP Militari (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["VP Cultura (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["VP Tecnologia (♥)",avg(pointsOnly.map(x=>x.score.techVP[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.techVP[1])).toFixed(2)],["VP Cibo (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Malus calamità (>=3 Re)",avg(pointsOnly.map(x=>x.score.kingPenalty[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.kingPenalty[1])).toFixed(2)],["Frequenza calamità (>=3 Re | solo partite ai punti)",`${pct(pointsOnly.filter(x=>x.score.kingPenalty[0]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`,`${pct(pointsOnly.filter(x=>x.score.kingPenalty[1]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`],["Swords medi",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Tech Sequences medie",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
  statusEl.textContent=`Completato: ${n} partite.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
 statusEl.textContent="Pronto. Core statistico allineato a jow.html (iframe su jow.html).";

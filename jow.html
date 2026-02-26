@@ -85,7 +85,7 @@
     <div class="hd">Giocatori</div>
     <div class="bd">
       <div class="row" style="margin-bottom:8px">
-        <button id="useJokerBtn">Usa Joker (2 prese)</button>
+        <button id="useJokerBtn">Build Wonder: Extra Turn</button>
       </div>
       <div class="status" id="statusGrid"></div>
       <div class="collections" id="collections"></div>
@@ -201,18 +201,26 @@ function flipNew(slots,acc){
 }
 function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
 function popcount13(x){ x>>>=0; let c=0; while(x){ x&=x-1; c++; } return c; }
-function heartLinksFromMask(mask){
+function techSequenceCountFromMask(mask){
   mask&=MASK13;
-  // Coppie tecnologiche valide (Cuori): A-2, 3-4, 5-6, 7-8, 9-10, J-Q, K-A.
-  // Regola: prima carta dispari, seconda immediatamente superiore,
-  // con eccezioni esplicite A-2 e K-A.
-  const pairs=[[1,2],[3,4],[5,6],[7,8],[9,10],[11,12],[13,1]];
-  let links=0;
-  for(const [a,b] of pairs){
-    const bitA=1<<(a-1), bitB=1<<(b-1);
-    if((mask&bitA) && (mask&bitB)) links++;
+  const triples=[];
+  for(let start=1;start<=13;start++){
+    const a=start;
+    const b=(start%13)+1;
+    const c=((start+1)%13)+1;
+    const tMask=(1<<(a-1))|(1<<(b-1))|(1<<(c-1));
+    if((mask&tMask)===tMask) triples.push(tMask);
   }
-  return links;
+  if(!triples.length) return 0;
+  let best=0;
+  function dfs(i,used,count){
+    if(i>=triples.length){ if(count>best) best=count; return; }
+    dfs(i+1,used,count);
+    const t=triples[i];
+    if((used&t)===0) dfs(i+1,used|t,count+1);
+  }
+  dfs(0,0,0);
+  return best;
 }
 function diamondAdjFromMask(mask){
   mask&=MASK13;
@@ -237,7 +245,7 @@ function updateFeat(feat,card){
   if(card.suit==="S") feat.sw+=swordValue(card);
   if(card.suit==="H"){
     feat.hMask|=bitOfRank(card.rank);
-    feat.hLinks=heartLinksFromMask(feat.hMask);
+    feat.hLinks=techSequenceCountFromMask(feat.hMask);
   }
   if(card.suit==="C") feat.cSum+=clubValue(card);
   if(card.suit==="D"){
@@ -253,7 +261,7 @@ function breakthroughCount(cards){
   const hMask=cards
     .filter(c=>c.suit==="H")
     .reduce((m,c)=>m|bitOfRank(c.rank),0);
-  return heartLinksFromMask(hMask);
+  return techSequenceCountFromMask(hMask);
 }
 function foodVP(cards){
   const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
@@ -287,7 +295,7 @@ function scoreGame(){
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   let vp0=0,vp1=0;
   if(s0>s1) vp0+=8; else if(s1>s0) vp1+=8;
-  vp0+=foodVP(p0)+tech0*2; vp1+=foodVP(p1)+tech1*2;
+  vp0+=foodVP(p0)+tech0*3; vp1+=foodVP(p1)+tech1*3;
   if(hasCalamityMalus(p0)) vp0-=5; if(hasCalamityMalus(p1)) vp1-=5;
 
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
@@ -298,10 +306,10 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=4) return {winner:0,reason:"Supremazia Tecnologica (4 technological pairs valide)"};
-  if(f1.hLinks>=4) return {winner:1,reason:"Supremazia Tecnologica (4 technological pairs valide)"};
-  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
+  if(f0.hLinks>=3) return {winner:0,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"};
+  if(f1.hLinks>=3) return {winner:1,reason:"Supremazia Tecnologica (>=3 Technological Sequences)"};
+  if(f0.sw - f1.sw >= 6) return {winner:0,reason:"Supremazia Militare (>=6 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 6) return {winner:1,reason:"Supremazia Militare (>=6 Swords di vantaggio)"};
   return null;
 }
 
@@ -359,7 +367,7 @@ function useJokerDouble(player=G.current){
   if(!canUseJokerDouble(player)) return false;
   G.players[player].joker=false;
   G.picksLeftThisTurn=2;
-  log(`${G.players[player].name} usa il Joker: 2 prese in questo turno.`);
+  log(`${G.players[player].name} costruisce Wonder (Extra Turn): 2 prese in questo turno.`);
   return true;
 }
 
@@ -386,17 +394,17 @@ function maybeModernSwap(nextFirst){
     const evSwap=estimatePolicyEV(swapState,1,120);
     if(evSwap>evNo+0.03){
       pl.joker=false;
-      log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`);
+      log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`);
       return Promise.resolve(second);
     }
     return Promise.resolve(nextFirst);
   }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
-    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole usare il Joker per diventare primo? (scelta ordine turno)</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, usa Joker</button></div>`;
+    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole costruire Wonder (Seize Initiative) per diventare primo?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, costruisci Wonder</button></div>`;
     d.showModal();
     d.querySelector("#no").onclick=()=>{d.close();resolve(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} usa il Joker per cambiare l'ordine di turno ed è primo nell'Età Moderna.`); resolve(second);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`); resolve(second);};
   });
 }
 
@@ -441,10 +449,10 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.hLinks>=4) return 0;
-  if(f1.hLinks>=4) return 1;
-  if(f0.sw - f1.sw >= 7) return 0;
-  if(f1.sw - f0.sw >= 7) return 1;
+  if(f0.hLinks>=3) return 0;
+  if(f1.hLinks>=3) return 1;
+  if(f0.sw - f1.sw >= 6) return 0;
+  if(f1.sw - f0.sw >= 6) return 1;
   return null;
 }
 function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
@@ -456,7 +464,7 @@ function staticTakeValue(S,player,card){
   let dBt=0;
   if(card.suit==="H"){
     const nm=(f.hMask|bitOfRank(card.rank))&MASK13;
-    dBt=heartLinksFromMask(nm)-f.hLinks;
+    dBt=techSequenceCountFromMask(nm)-f.hLinks;
   }
 
   let dFood=0;
@@ -490,7 +498,7 @@ function cheapEvalTake(S,player,idx){
   let dBt=0;
   if(card.suit==="H"){
     const nm=(me.hMask|bitOfRank(card.rank))&MASK13;
-    dBt=heartLinksFromMask(nm)-me.hLinks;
+    dBt=techSequenceCountFromMask(nm)-me.hLinks;
   }
 
   let dFood=0;
@@ -712,7 +720,7 @@ function scoreFor(S,i){
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=8; else if(sw[1]>sw[0]) vp[1]+=8;
-  vp[0]+=foodVP(a)+tech[0]*2; vp[1]+=foodVP(b)+tech[1]*2;
+  vp[0]+=foodVP(a)+tech[0]*3; vp[1]+=foodVP(b)+tech[1]*3;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   [12,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
@@ -765,7 +773,7 @@ function render(){
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
-  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Breakthroughs: ${tp[0]} / ${tp[1]}</div><div class='pill'>Joker: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Prese residue turno: ${G.picksLeftThisTurn}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
+  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Tech Sequences: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonder disponibile: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Prese residue turno: ${G.picksLeftThisTurn}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
