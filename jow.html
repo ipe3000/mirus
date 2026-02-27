@@ -89,7 +89,7 @@
 </header>
 <main>
   <section class="panel tableauPanel">
-    <div class="hd"><span>Tableau</span><span id="tableauInfo" class="pill"></span></div>
+    <div class="hd">Tableau</div>
     <div class="bd tableauWrap"><div id="tableau" class="tableau"></div></div>
   </section>
   <section class="panel sidePanel">
@@ -781,7 +781,6 @@ function render(){
   if(!G) return;
   document.getElementById("agePill").textContent=`Età: ${G.age==="ancient"?"Antica":"Moderna"}`;
   document.getElementById("turnPill").textContent=G.ended?"Partita conclusa":`Turno: ${G.players[G.current].name}`;
-  document.getElementById("tableauInfo").textContent=`Carte rimanenti: ${G.tableau.slots.filter(s=>!s.removed).length}`;
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
