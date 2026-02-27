@@ -63,7 +63,8 @@
     .collections{display:grid; gap:8px}
     .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
     .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
-    .cardsMini{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px}
+    .cardsMini{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+    .runGroup{display:inline-flex; gap:4px; padding:1px; border-radius:999px; background:rgba(148,163,184,.12)}
     .chip{padding:3px 7px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); font-size:11px; color:rgba(255,255,255,.9)}
     .chip.sS{border-color:rgba(239,68,68,.45)}
     .chip.sH{border-color:rgba(250,204,21,.45)}
@@ -159,6 +160,82 @@ function groupStraightRuns(cards){
     else groups.push([cur]);
   }
   return groups;
+}
+function techTripleGroups(cards){
+  const cardByRank=new Map(cards.filter(c=>c.suit==="H").map(c=>[RANK_VAL[c.rank],c]));
+  let mask=0;
+  for(const rk of cardByRank.keys()) mask|=1<<(rk-1);
+  mask&=MASK13;
+  const triples=[];
+  for(let start=1;start<=13;start++){
+    const a=start;
+    const b=(start%13)+1;
+    const c=((start+1)%13)+1;
+    const ranks=[a,b,c];
+    const tMask=(1<<(a-1))|(1<<(b-1))|(1<<(c-1));
+    if((mask&tMask)===tMask) triples.push({tMask,ranks});
+  }
+  if(!triples.length) return [];
+  let bestCount=0;
+  let bestMasks=[];
+  function dfs(i,used,count,picked){
+    if(i>=triples.length){
+      if(count>bestCount){bestCount=count; bestMasks=picked.slice();}
+      return;
+    }
+    dfs(i+1,used,count,picked);
+    const t=triples[i];
+    if((used&t.tMask)===0){
+      picked.push(t.tMask);
+      dfs(i+1,used|t.tMask,count+1,picked);
+      picked.pop();
+    }
+  }
+  dfs(0,0,0,[]);
+  const tripleByMask=new Map(triples.map(t=>[t.tMask,t.ranks]));
+  return bestMasks
+    .map(m=>tripleByMask.get(m) || [])
+    .map(ranks=>ranks.map(r=>cardByRank.get(r)).filter(Boolean))
+    .filter(g=>g.length===3)
+    .sort((a,b)=>RANK_VAL[a[0].rank]-RANK_VAL[b[0].rank]);
+}
+function diamondMaximalGroups(cards){
+  const cardByRank=new Map(cards.filter(c=>c.suit==="D").map(c=>[RANK_VAL[c.rank],c]));
+  const owned=new Set(cardByRank.keys());
+  if(owned.size<2) return [];
+  const present=i=>owned.has(i===0?13:i===14?1:i);
+  const groups=[];
+  for(let i=1;i<=13;i++){
+    if(!owned.has(i)) continue;
+    if(present(i-1)) continue;
+    const ranks=[i];
+    let cur=i;
+    while(present(cur+1)){
+      cur=cur===13?1:cur+1;
+      if(cur===i) break;
+      ranks.push(cur);
+    }
+    if(ranks.length>=2) groups.push(ranks.map(r=>cardByRank.get(r)).filter(Boolean));
+  }
+  return groups;
+}
+function groupedSuitTokens(suit,cards){
+  const sorted=sortCardsByRank(cards);
+  if(suit==="H"){
+    const runs=techTripleGroups(sorted);
+    const used=new Set(runs.flat().map(c=>c.id));
+    const singles=sorted.filter(c=>!used.has(c.id)).map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
+    const groups=runs.map(g=>({key:RANK_VAL[g[0].rank],cards:g}));
+    return [...singles,...groups].sort((a,b)=>a.key-b.key);
+  }
+  if(suit==="D"){
+    const runs=diamondMaximalGroups(sorted);
+    const used=new Set(runs.flat().map(c=>c.id));
+    const singles=sorted.filter(c=>!used.has(c.id)).map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
+    const groups=runs.map(g=>({key:RANK_VAL[g[0].rank],cards:g}));
+    return [...singles,...groups].sort((a,b)=>a.key-b.key);
+  }
+  return sorted.map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
 }
 
 function layout(model){
@@ -815,9 +892,9 @@ function render(){
     p.cards.forEach(c=>bySuit[c.suit].push(c));
     const suitCols=Object.entries(bySuit).map(([s,cards])=>{
       const sorted=sortCardsByRank(cards);
-      const chips=s==="D" || s==="H"
-        ? groupStraightRuns(sorted).map((group,idx)=>`${idx>0?"<span class='chip'>|</span>":""}${group.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}`).join("")
-        : sorted.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("");
+      const chips=groupedSuitTokens(s,sorted)
+        .map(token=>`<span class='runGroup'>${token.cards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</span>`)
+        .join("");
       return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${cards.length})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
     }).join("");
     el.innerHTML=`<strong>${p.name}</strong> (${p.cards.length} carte)<div class='takenGrid'>${suitCols}</div>`;
