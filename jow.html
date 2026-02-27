@@ -77,6 +77,12 @@
     .log{height:220px; overflow:auto; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:8px; font-size:12px}
     .line{margin:0 0 5px; color:#dbeafe}
     dialog{border:1px solid #334155; border-radius:12px; padding:14px; background:#0f172a; color:var(--text); width:min(560px,92vw)}
+    .endSummary{display:grid; gap:8px; margin:10px 0}
+    .endSummary .row{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:6px; padding:6px 8px; border:1px solid #334155; border-radius:10px; background:#0b1220}
+    .endSummary .label{color:var(--muted)}
+    .endSummary .tot{font-weight:800; color:#fde68a}
+    .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
+    .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
     .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
   </style>
 </head>
@@ -399,16 +405,37 @@ function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
-  let vp0=0,vp1=0;
-  if(s0>s1) vp0+=6; else if(s1>s0) vp1+=6;
-  vp0+=foodVP(p0)+tech0*6; vp1+=foodVP(p1)+tech1*6;
-  if(hasCalamityMalus(p0)) vp0-=5; if(hasCalamityMalus(p1)) vp1-=5;
+  const food0=foodVP(p0), food1=foodVP(p1);
+  const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
+  const military=[0,0];
+  if(s0>s1) military[0]=6; else if(s1>s0) military[1]=6;
 
+  const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
   const awards=[12,6,3];
-  for(let i=0;i<Math.min(awards.length,seqs.length);i++){ if(seqs[i].owner===0) vp0+=awards[i]; else vp1+=awards[i]; }
-  return {vp:[vp0,vp1], detail:{s:[s0,s1],tech:[tech0,tech1],seqs}};
+  const cultureAwards=[];
+  for(let i=0;i<Math.min(awards.length,seqs.length);i++){
+    const award=awards[i];
+    culture[seqs[i].owner]+=award;
+    cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
+  }
+
+  const vp0=military[0]+food0+tech0*6+culture[0]-(calam0?5:0);
+  const vp1=military[1]+food1+tech1*6+culture[1]-(calam1?5:0);
+
+  return {
+    vp:[vp0,vp1],
+    detail:{
+      swords:[s0,s1],
+      military,
+      food:[food0,food1],
+      tech:[tech0,tech1],
+      culture,
+      calamity:[calam0?-5:0,calam1?-5:0],
+      cultureAwards
+    }
+  };
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
@@ -475,6 +502,35 @@ function useJokerDouble(player=G.current){
   G.picksLeftThisTurn=2;
   log(`${G.players[player].name} costruisce Wonder (Extra Turn): 2 prese in questo turno.`);
   return true;
+}
+
+function showEndgameModal(sc,winner){
+  const d=document.getElementById("modal");
+  const p0=G.players[0].name, p1=G.players[1].name;
+  const rows=[
+    {label:"Militare",a:sc.detail.military[0],b:sc.detail.military[1]},
+    {label:"Cibo",a:sc.detail.food[0],b:sc.detail.food[1]},
+    {label:"Tecnologia",a:sc.detail.tech[0]*6,b:sc.detail.tech[1]*6},
+    {label:"Cultura",a:sc.detail.culture[0],b:sc.detail.culture[1]},
+    {label:"Calamità",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+  ];
+  const cultureText=sc.detail.cultureAwards.length
+    ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequenza ${x.length})`).join("<br>")
+    : "Nessun bonus Cultura assegnato.";
+  d.innerHTML=`
+    <h3>Fine partita</h3>
+    <p>Riepilogo punti vittoria:</p>
+    <div class='endSummary'>
+      ${rows.map(r=>`<div class='row'><span class='label'>${r.label}</span><strong>${r.a}</strong><strong>${r.b}</strong></div>`).join("")}
+      <div class='row tot'><span>Totale VP</span><strong>${sc.vp[0]}</strong><strong>${sc.vp[1]}</strong></div>
+    </div>
+    <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus Cultura: ${cultureText}</p>
+    <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Pareggio" : `🏆 Vince ${G.players[winner].name}`}</div>
+    <div class='optRow'><button id='closeEnd'>Chiudi</button></div>
+  `;
+  d.querySelector("#closeEnd").onclick=()=>d.close();
+  d.showModal();
 }
 
 function maybeModernSwap(nextFirst){
@@ -862,6 +918,7 @@ async function endTurnOrAge(){
     const w=sc.vp[0]===sc.vp[1]?null:(sc.vp[0]>sc.vp[1]?0:1);
     log(`Fine partita. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
     log(w===null?"Pareggio." : `🏆 Vince ${G.players[w].name} ai punti.`);
+    showEndgameModal(sc,w);
     render(); return;
   }
   if(G.picksLeftThisTurn<=0){
