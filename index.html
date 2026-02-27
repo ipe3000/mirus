@@ -3941,6 +3941,22 @@ logLine("Ready. Press “New game” to start with the selected settings.");
 render();
 scheduleFitTableau();
 
+// First paint can happen before viewport/font metrics fully settle on mobile.
+// Refit + rerender once the page is fully loaded so cards start at final size.
+function stabilizeInitialTableauSize(){
+  if (!STATE) return;
+  fitTableau();
+  render();
+}
+window.addEventListener("load", ()=>{
+  requestAnimationFrame(stabilizeInitialTableauSize);
+});
+if (document.fonts && document.fonts.ready){
+  document.fonts.ready.then(()=>{
+    requestAnimationFrame(stabilizeInitialTableauSize);
+  }).catch(()=>{});
+}
+
 window.MirusCore = {
   Engine,
   aiChoose,
