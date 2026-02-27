@@ -28,25 +28,32 @@
     .tableauWrap{overflow:hidden; display:flex; justify-content:center; align-items:flex-start}
     .tableau{position:relative; margin:0; transform-origin:top left}
     .sidePanel .bd{overflow:auto}
-    .card{position:absolute; width:64px; height:90px; border-radius:14px; background:linear-gradient(180deg,#1f2937,#111827); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s; text-align:center}
-    .card .big{font-size:22px; font-weight:720; line-height:1}
-    .card .small{position:absolute; top:6px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.72); font-weight:600; letter-spacing:.3px; white-space:nowrap}
+    .card{position:absolute; width:64px; height:90px; border-radius:14px; background:linear-gradient(180deg,#1f2937,#111827); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .10s ease, box-shadow .14s ease, filter .14s ease; text-align:center; will-change:transform}
+    .card .big{font-size:22px; font-weight:720; line-height:1; position:relative; z-index:2}
+    .card .small{position:absolute; top:6px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.96); font-weight:600; letter-spacing:.6px; white-space:nowrap; z-index:3; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:1px 3px; text-transform:uppercase; text-shadow:0 1px 0 rgba(0,0,0,.35); backdrop-filter:blur(6px)}
     .card .cornerL{position:absolute; top:6px; left:7px; font-size:11px; color:rgba(255,255,255,.78)}
     .card .cornerR{position:absolute; top:6px; right:7px; font-size:11px; color:rgba(255,255,255,.78)}
-    .faceDown{background:repeating-linear-gradient(45deg,rgba(255,255,255,.22) 0px,rgba(255,255,255,.22) 6px,transparent 6px,transparent 12px),linear-gradient(180deg,#475569,#1f2937); border-color:rgba(148,163,184,.65); color:#d1d5db; cursor:default}
+    .faceDown{background:repeating-linear-gradient(45deg,rgba(255,255,255,.22) 0px,rgba(255,255,255,.22) 6px,transparent 6px,transparent 12px),linear-gradient(180deg,#475569,#1f2937); border-color:rgba(148,163,184,.65); box-shadow:0 8px 16px rgba(0,0,0,.22); color:#d1d5db; cursor:default}
     .open{cursor:pointer}
-    .open:hover{transform:translateY(-2px)}
+    @media (hover:hover){
+      .open:hover{transform:translateY(-4px) scale(1.02); filter:brightness(1.06) saturate(1.06)}
+      .blocked:hover{filter:saturate(.82) brightness(.88)}
+    }
     .accessible{box-shadow:0 0 0 4px rgba(145,126,185,.95),0 0 0 7px rgba(145,126,185,.45),0 18px 34px rgba(0,0,0,.55)}
+    .accessible{filter:brightness(1.03) saturate(1.05)}
     .accessible::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0) 60%);pointer-events:none;z-index:1}
     .blocked{filter:saturate(.85) brightness(.9); box-shadow:0 6px 12px rgba(0,0,0,.35); transform:translateY(2px) scale(.985); cursor:not-allowed}
     .blocked::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 55%);pointer-events:none;z-index:1}
     .overlapped{box-shadow:0 12px 22px rgba(0,0,0,.48),0 0 0 1px rgba(15,23,42,.95)}
     .covering{box-shadow:0 16px 30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
     .removed{display:none}
-    .sC{background:linear-gradient(180deg,rgba(34,197,94),rgba(34,197,94)); border-color:rgba(34,197,94)}
-    .sS{background:linear-gradient(180deg,rgba(239,68,68),rgba(239,68,68)); border-color:rgba(239,68,68)}
-    .sD{background:linear-gradient(180deg,rgba(56,189,248),rgba(56,189,248)); border-color:rgba(56,189,248)}
-    .sH{background:linear-gradient(180deg,rgba(250,204,21),rgba(250,204,21)); border-color:rgba(250,204,21)}
+    .suitC{background:linear-gradient(180deg,rgba(34,197,94),rgba(34,197,94)); border-color:rgba(34,197,94)}
+    .suitS{background:linear-gradient(180deg,rgba(239,68,68),rgba(239,68,68)); border-color:rgba(239,68,68)}
+    .suitD{background:linear-gradient(180deg,rgba(56,189,248),rgba(56,189,248)); border-color:rgba(56,189,248)}
+    .suitH{background:linear-gradient(180deg,rgba(250,204,21),rgba(250,204,21)); border-color:rgba(250,204,21)}
+    .card .cornerL,.card .cornerR{z-index:4}
+    .card.blocked::after,.card.accessible::before{z-index:1}
+    .card.faceDown .small,.card.faceDown .big{display:none!important}
     .collections{display:grid; gap:8px}
     .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
     .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
@@ -132,7 +139,7 @@ function makeDeck(){
 }
 function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
 function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
-function cardClass(c){return `s${c.suit}`;}
+function cardClass(c){return `suit${c.suit}`;}
 
 function layout(model){
   const w=64,h=90;
