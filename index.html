@@ -139,10 +139,10 @@
     .cardsList{display:flex; flex-wrap:wrap; gap:6px; margin-top: 10px;}
 
     .compareWrap{margin-top:4px;}
-    .compareTable{width:100%; border-collapse:separate; border-spacing:0 8px; table-layout:fixed;}
+    .compareTable{width:100%; border-collapse:separate; border-spacing:0 6px; table-layout:fixed;}
     .compareTable th{font-size:12px; color:rgba(255,255,255,.72); text-align:left; padding:0 8px 4px; font-weight:650;}
     .compareTable th:first-child{width:128px;}
-    .compareTable td{padding:0 8px; vertical-align:top;}
+    .compareTable td{padding:0 6px; vertical-align:top;}
 
     .compareRow.suitS td .battleCell{ background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.24); }
     .compareRow.suitC td .battleCell{ background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.24); }
@@ -171,15 +171,15 @@
       border-radius:10px;
       border:1px solid rgba(255,255,255,.12);
       background: rgba(255,255,255,.04);
-      padding:7px 8px;
-      min-height:56px;
+      padding:6px 7px;
+      min-height:48px;
     }
     .battleHead{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;}
     .battleValue{font-size:15px; font-weight:760; line-height:1; color:rgba(255,255,255,.96);}
 
-    .suitValues{display:flex; gap:5px; flex-wrap:wrap;}
+    .suitValues{display:flex; gap:4px; flex-wrap:wrap;}
 
-    .chip{padding:4px 7px; border-radius: 999px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); font-size: 12px; color: rgba(255,255,255,.85);}
+    .chip{padding:3px 6px; border-radius: 999px; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); font-size: 11px; color: rgba(255,255,255,.85);}
     .chip.marked{border-color: rgba(250,204,21,.72); box-shadow: 0 0 0 1px rgba(250,204,21,.35) inset; background: rgba(250,204,21,.14); color: rgba(255,248,220,.98);}
     .chip.wonder{border-color: rgba(168,85,247,.58); background: rgba(168,85,247,.18); color: rgba(241,229,255,.98);}
     .chip.lastAi{border-color: rgba(125,211,252,.70); background: rgba(14,116,144,.28); color: rgba(224,242,254,.98);}
@@ -595,8 +595,9 @@ button.ghost{
 
     .suitMeta{font-size:12px; color: rgba(255,255,255,.86); line-height:1;}
     .suitSep{color: rgba(255,255,255,.25); margin: 0 4px;}
-    .suitValues{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
-    .chip.vp{border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.12); color: rgba(34,197,94,.92);}
+    .suitValues{display:flex; flex-wrap:wrap; gap:4px; align-items:center;}
+    .chip.vp{border-color: rgba(34,197,94,.70); background: rgba(34,197,94,.18); color: rgba(220,252,231,.98); font-weight:700;}
+    .chip.runPrimary{border-color: rgba(255,255,255,.55); box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset;}
     .chip.marked{border-color: rgba(251,191,36,.72); background: rgba(251,191,36,.20); color: rgba(255,248,220,.98); box-shadow: inset 0 0 0 1px rgba(251,191,36,.26); font-weight:700;}
     .chip.wonder{border-color: rgba(168,85,247,.58); background: rgba(168,85,247,.18); color: rgba(241,229,255,.98);}
     .vpBadge{color: rgba(34,197,94,.92);}
@@ -3460,33 +3461,39 @@ function runTokens(values, dashMinLen, vpSelector=null){
   const groupRuns = runs.filter(r => r.len >= dashMinLen);
 
   const inGroup = new Set();
-  for(const r of groupRuns){ for(const v of r.cards) inGroup.add(v); }
+  for (const r of groupRuns){
+    for (const v of r.cards) inGroup.add(v);
+  }
 
   const vpKeys = new Set();
   if (vpSelector instanceof Set){
     for (const k of vpSelector) vpKeys.add(k);
   } else if (typeof vpSelector === "number"){
     const ranked = groupRuns.slice().sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard));
-    for(const r of ranked.slice(0, vpSelector)) vpKeys.add(r.cards.join(","));
+    for (const r of ranked.slice(0, vpSelector)) vpKeys.add(r.cards.join(","));
   } else if (vpSelector === true){
-    for(const r of groupRuns) vpKeys.add(r.cards.join(","));
+    for (const r of groupRuns) vpKeys.add(r.cards.join(","));
   }
+
+  const sortedGroups = groupRuns
+    .slice()
+    .sort((a,b)=> (b.len-a.len) || (b.maxCard-a.maxCard) || (a.cards[0]-b.cards[0]));
+
+  const bestKey = sortedGroups.length ? sortedGroups[0].cards.join(",") : "";
+
+  const groups = sortedGroups.map(r => ({
+    key: r.cards[0],
+    text: `${valueLabel(r.cards[0])}→${valueLabel(r.cards[r.cards.length-1])} ×${r.len}`,
+    vp: vpKeys.has(r.cards.join(",")),
+    primary: r.cards.join(",") === bestKey
+  }));
 
   const singles = [...set]
     .filter(v => !inGroup.has(v))
     .sort((a,b)=>a-b)
-    .map(v => ({ key: v, text: valueLabel(v), vp: false }));
+    .map(v => ({ key: v, text: valueLabel(v), vp: false, primary: false }));
 
-  const groups = groupRuns
-    .slice()
-    .sort((a,b)=> (a.cards[0]-b.cards[0]))
-    .map(r => ({
-      key: r.cards[0],
-      text: r.cards.map(valueLabel).join("-"),
-      vp: vpKeys.has(r.cards.join(","))
-    }));
-
-  return singles.concat(groups).sort((a,b)=>a.key-b.key);
+  return groups.concat(singles);
 }
 
 function renderHands(){
@@ -3534,11 +3541,13 @@ function renderHands(){
     const marked = !!opts.marked;
     const wonder = !!opts.wonder;
     const lastAi = !!opts.lastAi;
+    const primary = !!opts.primary;
     const chip = document.createElement("div");
     chip.className = vp ? "chip vp" : "chip";
     if (marked) chip.classList.add("marked");
     if (wonder) chip.classList.add("wonder");
     if (lastAi) chip.classList.add("lastAi");
+    if (primary) chip.classList.add("runPrimary");
     chip.textContent = text;
     parent.appendChild(chip);
   };
@@ -3589,7 +3598,7 @@ function renderHands(){
     values.className = "suitValues";
     if (own.tokens){
       if (own.tokens.length===0) addChip(values, "—");
-      else for (const t of own.tokens) addChip(values, t.text, {vp:t.vp});
+      else for (const t of own.tokens) addChip(values, t.text, {vp:t.vp, primary:t.primary});
     } else {
       const chips = own.chips || [];
       if (chips.length===0) addChip(values, "—");
