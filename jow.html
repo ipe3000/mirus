@@ -28,12 +28,12 @@
     .tableauWrap{overflow:hidden; display:flex; justify-content:center; align-items:flex-start}
     .tableau{position:relative; margin:0; transform-origin:top left}
     .sidePanel .bd{overflow:auto}
-    .card{position:absolute; width:64px; height:90px; border-radius:12px; border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s; text-align:center}
-    .card::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);pointer-events:none}
-    .card .big{font-size:18px; font-weight:760; line-height:1}
-    .card .small{position:absolute; top:5px; left:50%; transform:translateX(-50%); font-size:10px; color:rgba(255,255,255,.78); font-weight:600; letter-spacing:.2px; white-space:nowrap}
-    .card .cornerR{position:absolute; top:5px; right:6px; font-size:10px; color:rgba(255,255,255,.78)}
-    .faceDown{background:linear-gradient(145deg,#6b7280,#374151); color:#d1d5db; cursor:default}
+    .card{position:absolute; width:64px; height:90px; border-radius:14px; background:linear-gradient(180deg,#1f2937,#111827); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .12s; text-align:center}
+    .card .big{font-size:22px; font-weight:720; line-height:1}
+    .card .small{position:absolute; top:6px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.72); font-weight:600; letter-spacing:.3px; white-space:nowrap}
+    .card .cornerL{position:absolute; top:6px; left:7px; font-size:11px; color:rgba(255,255,255,.78)}
+    .card .cornerR{position:absolute; top:6px; right:7px; font-size:11px; color:rgba(255,255,255,.78)}
+    .faceDown{background:repeating-linear-gradient(45deg,rgba(255,255,255,.22) 0px,rgba(255,255,255,.22) 6px,transparent 6px,transparent 12px),linear-gradient(180deg,#475569,#1f2937); border-color:rgba(148,163,184,.65); color:#d1d5db; cursor:default}
     .open{cursor:pointer}
     .open:hover{transform:translateY(-2px)}
     .accessible{box-shadow:0 0 0 4px rgba(145,126,185,.95),0 0 0 7px rgba(145,126,185,.45),0 18px 34px rgba(0,0,0,.55)}
@@ -43,10 +43,10 @@
     .overlapped{box-shadow:0 12px 22px rgba(0,0,0,.48),0 0 0 1px rgba(15,23,42,.95)}
     .covering{box-shadow:0 16px 30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
     .removed{display:none}
-    .sS{background:linear-gradient(180deg,#7f1d1d,#450a0a); color:#fee2e2}
-    .sH{background:linear-gradient(180deg,#fef08a,#facc15); color:#422006}
-    .sD{background:linear-gradient(180deg,#0ea5e9,#0369a1); color:#e0f2fe}
-    .sC{background:linear-gradient(180deg,#16a34a,#166534); color:#dcfce7}
+    .sC{background:linear-gradient(180deg,rgba(34,197,94),rgba(34,197,94)); border-color:rgba(34,197,94)}
+    .sS{background:linear-gradient(180deg,rgba(239,68,68),rgba(239,68,68)); border-color:rgba(239,68,68)}
+    .sD{background:linear-gradient(180deg,rgba(56,189,248),rgba(56,189,248)); border-color:rgba(56,189,248)}
+    .sH{background:linear-gradient(180deg,rgba(250,204,21),rgba(250,204,21)); border-color:rgba(250,204,21)}
     .collections{display:grid; gap:8px}
     .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
     .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
@@ -101,6 +101,7 @@
 const SUITS=["S","D","H","C"];
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
+const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
@@ -812,7 +813,7 @@ function render(){
     const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!slots[p].removed);
     e.className=`card ${s.removed?"removed":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!s.removed?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!s.removed?"open accessible":""} ${!acc[i]&&!s.removed&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
     e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
-    e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='small'>${SUIT_NAME[s.card.suit]}</div><div class='cornerR'>${s.row+1}-${s.col+1}</div><div class='big'>${label(s.card)}</div>`;
+    e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='small'>${SUIT_ABBR[s.card.suit]||SUIT_NAME[s.card.suit]}</div><div class='cornerL'></div><div class='cornerR'></div><div class='big'>${label(s.card)}</div>`;
     e.onclick=()=>takeCard(i);
     t.appendChild(e);
   }
