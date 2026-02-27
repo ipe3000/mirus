@@ -145,6 +145,21 @@ function makeDeck(){
 function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
 function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
 function cardClass(c){return `suit${c.suit}`;}
+function sortCardsByRank(cards){
+  return cards.slice().sort((a,b)=>RANK_VAL[a.rank]-RANK_VAL[b.rank]);
+}
+function groupStraightRuns(cards){
+  const sorted=sortCardsByRank(cards);
+  if(!sorted.length) return [];
+  const groups=[[sorted[0]]];
+  for(let i=1;i<sorted.length;i++){
+    const prev=groups[groups.length-1][groups[groups.length-1].length-1];
+    const cur=sorted[i];
+    if(RANK_VAL[cur.rank]===RANK_VAL[prev.rank]+1) groups[groups.length-1].push(cur);
+    else groups.push([cur]);
+  }
+  return groups;
+}
 
 function layout(model){
   const w=64,h=90;
@@ -798,7 +813,13 @@ function render(){
     const el=document.createElement("div"); el.className=`pbox ${G.current===i&&!G.ended?"active":""}`;
     const bySuit={S:[],H:[],D:[],C:[]};
     p.cards.forEach(c=>bySuit[c.suit].push(c));
-    const suitCols=Object.entries(bySuit).map(([s,cards])=>`<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${cards.length})</div><div class='cardsMini'>${cards.length?cards.slice(-12).map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join(""):"<span class='chip'>—</span>"}</div></div>`).join("");
+    const suitCols=Object.entries(bySuit).map(([s,cards])=>{
+      const sorted=sortCardsByRank(cards);
+      const chips=s==="D" || s==="H"
+        ? groupStraightRuns(sorted).map((group,idx)=>`${idx>0?"<span class='chip'>|</span>":""}${group.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}`).join("")
+        : sorted.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("");
+      return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${cards.length})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
+    }).join("");
     el.innerHTML=`<strong>${p.name}</strong> (${p.cards.length} carte)<div class='takenGrid'>${suitCols}</div>`;
     col.appendChild(el);
   }
