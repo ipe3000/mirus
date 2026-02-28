@@ -79,6 +79,7 @@
     dialog{border:1px solid #334155; border-radius:12px; padding:14px; background:#0f172a; color:var(--text); width:min(560px,92vw)}
     .endSummary{display:grid; gap:8px; margin:10px 0}
     .endSummary .row{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:6px; padding:6px 8px; border:1px solid #334155; border-radius:10px; background:#0b1220}
+    .endSummary .row > :nth-child(n+2){border-left:1px solid rgba(148,163,184,.28); padding-left:8px}
     .endSummary .label{color:var(--muted)}
     .endSummary .tot{font-weight:800; color:#fde68a}
     .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
@@ -531,6 +532,7 @@ function showEndgameModal(sc,winner){
     <h3>Fine partita</h3>
     <p>Riepilogo punti vittoria:</p>
     <div class='endSummary'>
+      <div class='row head'><span></span><strong>P1</strong><strong>P2</strong></div>
       ${rows.map(r=>`<div class='row'><span class='label'>${r.label}</span><strong>${r.a}</strong><strong>${r.b}</strong></div>`).join("")}
       <div class='row tot'><span>Totale VP</span><strong>${sc.vp[0]}</strong><strong>${sc.vp[1]}</strong></div>
     </div>
