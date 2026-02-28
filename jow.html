@@ -77,11 +77,11 @@
     .log{height:220px; overflow:auto; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:8px; font-size:12px}
     .line{margin:0 0 5px; color:#dbeafe}
     dialog{border:1px solid #334155; border-radius:12px; padding:14px; background:#0f172a; color:var(--text); width:min(560px,92vw)}
-    .endSummary{display:grid; gap:8px; margin:10px 0}
-    .endSummary .row{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:6px; padding:6px 8px; border:1px solid #334155; border-radius:10px; background:#0b1220}
-    .endSummary .row > :nth-child(n+2){border-left:1px solid rgba(148,163,184,.28); padding-left:8px}
-    .endSummary .label{color:var(--muted)}
-    .endSummary .tot{font-weight:800; color:#fde68a}
+    .endSummary{width:100%; border-collapse:collapse; margin:10px 0; border:1px solid #334155; border-radius:10px; overflow:hidden; background:#0b1220}
+    .endSummary th,.endSummary td{padding:6px 8px; text-align:right; border:1px solid #334155}
+    .endSummary th:first-child,.endSummary td:first-child{text-align:left}
+    .endSummary tbody td:first-child{color:var(--muted)}
+    .endSummary .tot td{font-weight:800; color:#fde68a}
     .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
     .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
     .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
@@ -531,11 +531,17 @@ function showEndgameModal(sc,winner){
   d.innerHTML=`
     <h3>Fine partita</h3>
     <p>Riepilogo punti vittoria:</p>
-    <div class='endSummary'>
-      <div class='row head'><span></span><strong>P1</strong><strong>P2</strong></div>
-      ${rows.map(r=>`<div class='row'><span class='label'>${r.label}</span><strong>${r.a}</strong><strong>${r.b}</strong></div>`).join("")}
-      <div class='row tot'><span>Totale VP</span><strong>${sc.vp[0]}</strong><strong>${sc.vp[1]}</strong></div>
-    </div>
+    <table class='endSummary'>
+      <thead>
+        <tr><th></th><th>P1</th><th>P2</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`<tr><td>${r.label}</td><td><strong>${r.a}</strong></td><td><strong>${r.b}</strong></td></tr>`).join("")}
+      </tbody>
+      <tfoot>
+        <tr class='tot'><td>Totale VP</td><td><strong>${sc.vp[0]}</strong></td><td><strong>${sc.vp[1]}</strong></td></tr>
+      </tfoot>
+    </table>
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
     <p style='color:var(--muted);margin-top:8px'>Bonus Cultura: ${cultureText}</p>
     <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Pareggio" : `🏆 Vince ${G.players[winner].name}`}</div>
