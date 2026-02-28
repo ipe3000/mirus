@@ -120,7 +120,7 @@
 
 <script>
 const SUITS=["S","D","H","C"];
-const DIAMOND_VP_AWARDS=[12,8,4];
+const DIAMOND_VP_AWARDS=[13,8,4];
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -416,12 +416,12 @@ function scoreGame(){
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   const techVP=[0,0];
-  if(tech0>0 && tech1===0) techVP[0]=5;
-  else if(tech1>0 && tech0===0) techVP[1]=5;
+  if(tech0>0 && tech1===0) techVP[0]=6;
+  else if(tech1>0 && tech0===0) techVP[1]=6;
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
-  if(s0>s1) military[0]=5; else if(s1>s0) military[1]=5;
+  if(s0>s1) military[0]=6; else if(s1>s0) military[1]=6;
 
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
@@ -455,8 +455,8 @@ function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
   if(f0.hLinks>=2) return {winner:0,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
   if(f1.hLinks>=2) return {winner:1,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
-  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
+  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   return null;
 }
 
@@ -902,10 +902,10 @@ function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
-  if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
+  if(sw[0]>sw[1]) vp[0]+=6; else if(sw[1]>sw[0]) vp[1]+=6;
   vp[0]+=foodVP(a); vp[1]+=foodVP(b);
-  if(tech[0]>0 && tech[1]===0) vp[0]+=5;
-  else if(tech[1]>0 && tech[0]===0) vp[1]+=5;
+  if(tech[0]>0 && tech[1]===0) vp[0]+=6;
+  else if(tech[1]>0 && tech[0]===0) vp[1]+=6;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
