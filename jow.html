@@ -120,6 +120,7 @@
 
 <script>
 const SUITS=["S","D","H","C"];
+const DIAMOND_VP_AWARDS=[12,8,4];
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -425,7 +426,7 @@ function scoreGame(){
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const awards=[10,6,3];
+  const awards=DIAMOND_VP_AWARDS;
   const cultureAwards=[];
   for(let i=0;i<Math.min(awards.length,seqs.length);i++){
     const award=awards[i];
@@ -907,7 +908,7 @@ function scoreFor(S,i){
   else if(tech[1]>0 && tech[0]===0) vp[1]+=5;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  [10,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
+  DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
   return vp[i];
 }
 
