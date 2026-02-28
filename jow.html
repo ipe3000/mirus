@@ -416,6 +416,9 @@ function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
+  const techVP=[0,0];
+  if(tech0>0 && tech1===0) techVP[0]=5;
+  else if(tech1>0 && tech0===0) techVP[1]=5;
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
@@ -432,8 +435,8 @@ function scoreGame(){
     cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
   }
 
-  const vp0=military[0]+food0+tech0*5+culture[0]-(calam0?5:0);
-  const vp1=military[1]+food1+tech1*5+culture[1]-(calam1?5:0);
+  const vp0=military[0]+food0+techVP[0]+culture[0]-(calam0?5:0);
+  const vp1=military[1]+food1+techVP[1]+culture[1]-(calam1?5:0);
 
   return {
     vp:[vp0,vp1],
@@ -442,6 +445,7 @@ function scoreGame(){
       military,
       food:[food0,food1],
       tech:[tech0,tech1],
+      techVP,
       culture,
       calamity:[calam0?-5:0,calam1?-5:0],
       cultureAwards
@@ -521,7 +525,7 @@ function showEndgameModal(sc,winner){
   const rows=[
     {label:"Militare",a:sc.detail.military[0],b:sc.detail.military[1]},
     {label:"Cibo",a:sc.detail.food[0],b:sc.detail.food[1]},
-    {label:"Tecnologia",a:sc.detail.tech[0]*5,b:sc.detail.tech[1]*5},
+    {label:"Tecnologia",a:sc.detail.techVP[0],b:sc.detail.techVP[1]},
     {label:"Cultura",a:sc.detail.culture[0],b:sc.detail.culture[1]},
     {label:"Calamità",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
@@ -900,7 +904,9 @@ function scoreFor(S,i){
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
-  vp[0]+=foodVP(a)+tech[0]*5; vp[1]+=foodVP(b)+tech[1]*5;
+  vp[0]+=foodVP(a); vp[1]+=foodVP(b);
+  if(tech[0]>0 && tech[1]===0) vp[0]+=5;
+  else if(tech[1]>0 && tech[0]===0) vp[1]+=5;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   [10,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
