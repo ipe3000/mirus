@@ -355,9 +355,8 @@ function swordValue(card){
   return (v<=9) ? 1 : 2;
 }
 function clubValue(card){
-  if(card.rank==="A") return 1;
-  if(card.rank==="J" || card.rank==="Q" || card.rank==="K") return 10;
-  return RANK_VAL[card.rank];
+  const v=RANK_VAL[card.rank];
+  return (v<=9) ? 1 : 2;
 }
 function kingRiskFromCount(k){
   if(k>=3) return -3;
@@ -387,8 +386,7 @@ function breakthroughCount(cards){
   return techSequenceCountFromMask(hMask);
 }
 function foodVP(cards){
-  const v=cards.filter(c=>c.suit==="C").reduce((a,c)=>a+(c.rank==="A"?1:["J","Q","K"].includes(c.rank)?10:RANK_VAL[c.rank]),0);
-  return Math.floor(v/5);
+  return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+clubValue(c),0);
 }
 function hasCalamityMalus(cards){
   return cards.filter(c=>c.rank==="K").length>=3;
@@ -653,8 +651,8 @@ function staticTakeValue(S,player,card){
 
   let dFood=0;
   if(card.suit==="C"){
-    const before=Math.floor(f.cSum/5);
-    const after=Math.floor((f.cSum+clubValue(card))/5);
+    const before=f.cSum;
+    const after=f.cSum+clubValue(card);
     dFood=after-before;
   }
 
@@ -687,8 +685,8 @@ function cheapEvalTake(S,player,idx){
 
   let dFood=0;
   if(card.suit==="C"){
-    const before=Math.floor(me.cSum/5);
-    const after=Math.floor((me.cSum+clubValue(card))/5);
+    const before=me.cSum;
+    const after=me.cSum+clubValue(card);
     dFood=after-before;
   }
 
