@@ -419,12 +419,12 @@ function scoreGame(){
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
-  if(s0>s1) military[0]=6; else if(s1>s0) military[1]=6;
+  if(s0>s1) military[0]=5; else if(s1>s0) military[1]=5;
 
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const awards=[12,6,3];
+  const awards=[10,6,3];
   const cultureAwards=[];
   for(let i=0;i<Math.min(awards.length,seqs.length);i++){
     const award=awards[i];
@@ -432,8 +432,8 @@ function scoreGame(){
     cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
   }
 
-  const vp0=military[0]+food0+tech0*6+culture[0]-(calam0?5:0);
-  const vp1=military[1]+food1+tech1*6+culture[1]-(calam1?5:0);
+  const vp0=military[0]+food0+tech0*5+culture[0]-(calam0?5:0);
+  const vp1=military[1]+food1+tech1*5+culture[1]-(calam1?5:0);
 
   return {
     vp:[vp0,vp1],
@@ -521,7 +521,7 @@ function showEndgameModal(sc,winner){
   const rows=[
     {label:"Militare",a:sc.detail.military[0],b:sc.detail.military[1]},
     {label:"Cibo",a:sc.detail.food[0],b:sc.detail.food[1]},
-    {label:"Tecnologia",a:sc.detail.tech[0]*6,b:sc.detail.tech[1]*6},
+    {label:"Tecnologia",a:sc.detail.tech[0]*5,b:sc.detail.tech[1]*5},
     {label:"Cultura",a:sc.detail.culture[0],b:sc.detail.culture[1]},
     {label:"Calamità",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
@@ -899,11 +899,11 @@ function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
-  if(sw[0]>sw[1]) vp[0]+=6; else if(sw[1]>sw[0]) vp[1]+=6;
-  vp[0]+=foodVP(a)+tech[0]*6; vp[1]+=foodVP(b)+tech[1]*6;
+  if(sw[0]>sw[1]) vp[0]+=5; else if(sw[1]>sw[0]) vp[1]+=5;
+  vp[0]+=foodVP(a)+tech[0]*5; vp[1]+=foodVP(b)+tech[1]*5;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  [12,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
+  [10,6,3].forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
   return vp[i];
 }
 
