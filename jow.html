@@ -143,6 +143,16 @@ const TABLEAU_MODEL={
 };
 let G=null;
 let aiTimer=null;
+let renderScheduled=false;
+
+function scheduleRender(){
+  if(renderScheduled) return;
+  renderScheduled=true;
+  requestAnimationFrame(()=>{
+    renderScheduled=false;
+    render();
+  });
+}
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function makeDeck(){
@@ -989,7 +999,21 @@ function render(){
   maybeRunAiTurn();
 }
 
-window.addEventListener("resize",()=>render());
+window.addEventListener("resize",scheduleRender);
+window.addEventListener("load",()=>{
+  scheduleRender();
+  requestAnimationFrame(scheduleRender);
+});
+
+const tableauWrapEl=document.querySelector(".tableauWrap");
+if(tableauWrapEl && typeof ResizeObserver!=="undefined"){
+  const tableauResizeObserver=new ResizeObserver(()=>scheduleRender());
+  tableauResizeObserver.observe(tableauWrapEl);
+}
+
+if(document.fonts?.ready){
+  document.fonts.ready.then(()=>scheduleRender());
+}
 
 document.getElementById("newGameBtn").onclick=()=>newGame();
 document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
