@@ -612,6 +612,12 @@ function ucbSelect(stats,total,c=0.9){
 }
 
 function cloneGameState(){
+  const simTableau={
+    slots:G.tableau.slots.map(s=>({...s})),
+    coveredBy:G.tableau.coveredBy,
+    coveredByRev:G.tableau.coveredByRev
+  };
+  hideFaceDownInfoForSim(simTableau);
   return {
     age:G.age,
     current:G.current,
@@ -620,13 +626,29 @@ function cloneGameState(){
     picksLeftThisTurn:G.picksLeftThisTurn,
     modernSwapStillAvailable:G.modernSwapStillAvailable,
     players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
-    tableau:{
-      slots:G.tableau.slots.map(s=>({...s})),
-      coveredBy:G.tableau.coveredBy,
-      coveredByRev:G.tableau.coveredByRev
-    },
+    tableau:simTableau,
     decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
   };
+}
+function shuffleInPlace(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=(Math.random()*(i+1))|0;
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+function hideFaceDownInfoForSim(tableau){
+  const hiddenPool=[];
+  for(const slot of tableau.slots){
+    if(slot.removed || !slot.faceDown) continue;
+    if(slot.card) hiddenPool.push(slot.card);
+    slot.card=null;
+  }
+  tableau.hiddenPool=shuffleInPlace(hiddenPool);
+}
+function revealHiddenForSim(tableau){
+  if(!tableau.hiddenPool || !tableau.hiddenPool.length) return null;
+  return tableau.hiddenPool.pop();
 }
 function accessibilitySim(T){
   const {slots,coveredBy}=T;
@@ -640,7 +662,14 @@ function checkSupremacySim(S){
   if(f1.sw - f0.sw >= 7) return 1;
   return null;
 }
-function flipNewSim(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed&&slots[i].faceDown&&acc[i]) slots[i].faceDown=false;}
+function flipNewSim(tableau,acc){
+  const slots=tableau.slots;
+  for(let i=0;i<slots.length;i++){
+    if(slots[i].removed || !slots[i].faceDown || !acc[i]) continue;
+    slots[i].faceDown=false;
+    if(!slots[i].card) slots[i].card=revealHiddenForSim(tableau);
+  }
+}
 function staticTakeValue(S,player,card){
   const f=S.players[player].feat;
 
@@ -719,7 +748,7 @@ function cheapEvalTake(S,player,idx){
     if(!becomesAccessible) continue;
 
     const w=upper.faceDown ? 0.35 : 0.18;
-    revealBonus += w * staticTakeValue(S,player,upper.card);
+    if(upper.card) revealBonus += w * staticTakeValue(S,player,upper.card);
   }
 
   return baseScore + revealBonus;
@@ -757,7 +786,8 @@ function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
   noSwap.age="modern";
   noSwap.current=nextFirst;
   noSwap.picksLeftThisTurn=1;
-  noSwap.tableau=buildTableau("modern",noSwap.decks.modern);
+  noSwap.tableau=buildTableau("modern",shuffleInPlace(noSwap.decks.modern.slice()));
+  hideFaceDownInfoForSim(noSwap.tableau);
   noSwap.modernSwapStillAvailable=true;
 
   const swap=cloneState(S);
@@ -765,7 +795,8 @@ function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
   swap.age="modern";
   swap.current=second;
   swap.picksLeftThisTurn=1;
-  swap.tableau=buildTableau("modern",swap.decks.modern);
+  swap.tableau=buildTableau("modern",shuffleInPlace(swap.decks.modern.slice()));
+  hideFaceDownInfoForSim(swap.tableau);
   swap.modernSwapStillAvailable=true;
 
   const evNo=estimatePolicyEV(noSwap,aiPlayer,16);
@@ -783,7 +814,8 @@ function advanceAgeSim(S){
     S.current=start;
     S.picksLeftThisTurn=1;
     S.age="modern";
-    S.tableau=buildTableau("modern",S.decks.modern);
+    S.tableau=buildTableau("modern",shuffleInPlace(S.decks.modern.slice()));
+    hideFaceDownInfoForSim(S.tableau);
     return;
   }
   S.ended=true;
@@ -813,7 +845,7 @@ function applyTakeSim(S,idx){
   updateFeat(p.feat,slot.card);
   S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
   const accAfter=accessibilitySim(S.tableau);
-  flipNewSim(S.tableau.slots,accAfter);
+  flipNewSim(S.tableau,accAfter);
   const sup=checkSupremacySim(S); if(sup!==null){S.ended=true; S.winner=sup; return;}
   if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false;
   if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
@@ -842,7 +874,12 @@ function cloneState(S){
     age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
     modernSwapStillAvailable:S.modernSwapStillAvailable,
     players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
-    tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},
+    tableau:{
+      slots:S.tableau.slots.map(s=>({...s})),
+      coveredBy:S.tableau.coveredBy,
+      coveredByRev:S.tableau.coveredByRev,
+      hiddenPool:(S.tableau.hiddenPool||[]).slice()
+    },
     decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},winner:S.winner
   };
 }
