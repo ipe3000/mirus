@@ -121,6 +121,8 @@
 <script>
 const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[15,9,4];
+const MILITARY_VP=7;
+const TECHNOLOGY_VP=7;
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -416,12 +418,12 @@ function scoreGame(){
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   const techVP=[0,0];
-  if(tech0>0 && tech1===0) techVP[0]=6;
-  else if(tech1>0 && tech0===0) techVP[1]=6;
+  if(tech0>0 && tech1===0) techVP[0]=TECHNOLOGY_VP;
+  else if(tech1>0 && tech0===0) techVP[1]=TECHNOLOGY_VP;
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
-  if(s0>s1) military[0]=6; else if(s1>s0) military[1]=6;
+  if(s0>s1) military[0]=MILITARY_VP; else if(s1>s0) military[1]=MILITARY_VP;
 
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
@@ -902,10 +904,10 @@ function scoreFor(S,i){
   const a=S.players[0].cards,b=S.players[1].cards;
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
-  if(sw[0]>sw[1]) vp[0]+=6; else if(sw[1]>sw[0]) vp[1]+=6;
+  if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
   vp[0]+=foodVP(a); vp[1]+=foodVP(b);
-  if(tech[0]>0 && tech[1]===0) vp[0]+=6;
-  else if(tech[1]>0 && tech[0]===0) vp[1]+=6;
+  if(tech[0]>0 && tech[1]===0) vp[0]+=TECHNOLOGY_VP;
+  else if(tech[1]>0 && tech[0]===0) vp[1]+=TECHNOLOGY_VP;
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
