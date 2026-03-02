@@ -103,7 +103,6 @@
     <div class="bd tableauWrap"><div id="tableau" class="tableau"></div></div>
   </section>
   <section class="panel sidePanel">
-    <div class="hd">Giocatori</div>
     <div class="bd">
       <div class="row" style="margin-bottom:8px">
         <button id="useJokerBtn">Build Wonder: Extra Turn</button>
@@ -999,7 +998,7 @@ function render(){
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
-  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Tech Sequences: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonder disponibile: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Prese residue turno: ${G.picksLeftThisTurn}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
+  sg.innerHTML=`<div class='pill'>Swords: ${sw[0]} / ${sw[1]}</div><div class='pill'>Tech Sequences: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonder disponibile PL-AI: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Supremacy militare: diff ${Math.abs(sw[0]-sw[1])}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
