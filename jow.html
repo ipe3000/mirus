@@ -122,7 +122,8 @@
 const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[15,9,4];
 const MILITARY_VP=5;
-const TECHNOLOGY_VP=5;
+const TECHNOLOGY_VP_FOR_2=2;
+const TECHNOLOGY_VP_FOR_3=5;
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -182,30 +183,29 @@ function groupStraightRuns(cards){
   }
   return groups;
 }
-function techTripleGroups(cards){
+function techPairGroups(cards){
   const cardByRank=new Map(cards.filter(c=>c.suit==="H").map(c=>[RANK_VAL[c.rank],c]));
   let mask=0;
   for(const rk of cardByRank.keys()) mask|=1<<(rk-1);
   mask&=MASK13;
-  const triples=[];
+  const pairs=[];
   for(let start=1;start<=13;start++){
     const a=start;
     const b=(start%13)+1;
-    const c=((start+1)%13)+1;
-    const ranks=[a,b,c];
-    const tMask=(1<<(a-1))|(1<<(b-1))|(1<<(c-1));
-    if((mask&tMask)===tMask) triples.push({tMask,ranks});
+    const ranks=[a,b];
+    const tMask=(1<<(a-1))|(1<<(b-1));
+    if((mask&tMask)===tMask) pairs.push({tMask,ranks});
   }
-  if(!triples.length) return [];
+  if(!pairs.length) return [];
   let bestCount=0;
   let bestMasks=[];
   function dfs(i,used,count,picked){
-    if(i>=triples.length){
+    if(i>=pairs.length){
       if(count>bestCount){bestCount=count; bestMasks=picked.slice();}
       return;
     }
     dfs(i+1,used,count,picked);
-    const t=triples[i];
+    const t=pairs[i];
     if((used&t.tMask)===0){
       picked.push(t.tMask);
       dfs(i+1,used|t.tMask,count+1,picked);
@@ -213,11 +213,11 @@ function techTripleGroups(cards){
     }
   }
   dfs(0,0,0,[]);
-  const tripleByMask=new Map(triples.map(t=>[t.tMask,t.ranks]));
+  const pairByMask=new Map(pairs.map(t=>[t.tMask,t.ranks]));
   return bestMasks
-    .map(m=>tripleByMask.get(m) || [])
+    .map(m=>pairByMask.get(m) || [])
     .map(ranks=>ranks.map(r=>cardByRank.get(r)).filter(Boolean))
-    .filter(g=>g.length===3)
+    .filter(g=>g.length===2)
     .sort((a,b)=>RANK_VAL[a[0].rank]-RANK_VAL[b[0].rank]);
 }
 function diamondMaximalGroups(cards){
@@ -243,7 +243,7 @@ function diamondMaximalGroups(cards){
 function groupedSuitTokens(suit,cards){
   const sorted=sortCardsByRank(cards);
   if(suit==="H"){
-    const runs=techTripleGroups(sorted);
+    const runs=techPairGroups(sorted);
     const used=new Set(runs.flat().map(c=>c.id));
     const singles=sorted.filter(c=>!used.has(c.id)).map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
     const groups=runs.map(g=>({key:RANK_VAL[g[0].rank],cards:g}));
@@ -329,24 +329,28 @@ function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
 function popcount13(x){ x>>>=0; let c=0; while(x){ x&=x-1; c++; } return c; }
 function techSequenceCountFromMask(mask){
   mask&=MASK13;
-  const triples=[];
+  const pairs=[];
   for(let start=1;start<=13;start++){
     const a=start;
     const b=(start%13)+1;
-    const c=((start+1)%13)+1;
-    const tMask=(1<<(a-1))|(1<<(b-1))|(1<<(c-1));
-    if((mask&tMask)===tMask) triples.push(tMask);
+    const tMask=(1<<(a-1))|(1<<(b-1));
+    if((mask&tMask)===tMask) pairs.push(tMask);
   }
-  if(!triples.length) return 0;
+  if(!pairs.length) return 0;
   let best=0;
   function dfs(i,used,count){
-    if(i>=triples.length){ if(count>best) best=count; return; }
+    if(i>=pairs.length){ if(count>best) best=count; return; }
     dfs(i+1,used,count);
-    const t=triples[i];
+    const t=pairs[i];
     if((used&t)===0) dfs(i+1,used|t,count+1);
   }
   dfs(0,0,0);
   return best;
+}
+function technologyVP(count){
+  if(count===2) return TECHNOLOGY_VP_FOR_2;
+  if(count===3) return TECHNOLOGY_VP_FOR_3;
+  return 0;
 }
 function diamondAdjFromMask(mask){
   mask&=MASK13;
@@ -417,9 +421,7 @@ function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
-  const techVP=[0,0];
-  if(tech0>0 && tech1===0) techVP[0]=TECHNOLOGY_VP;
-  else if(tech1>0 && tech0===0) techVP[1]=TECHNOLOGY_VP;
+  const techVP=[technologyVP(tech0),technologyVP(tech1)];
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
@@ -455,8 +457,8 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=2) return {winner:0,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
-  if(f1.hLinks>=2) return {winner:1,reason:"Supremazia Tecnologica (>=2 Technological Sequences)"};
+  if(f0.hLinks>=4) return {winner:0,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
+  if(f1.hLinks>=4) return {winner:1,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
   if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
   return null;
@@ -943,8 +945,8 @@ function scoreFor(S,i){
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
   vp[0]+=foodVP(a); vp[1]+=foodVP(b);
-  if(tech[0]>0 && tech[1]===0) vp[0]+=TECHNOLOGY_VP;
-  else if(tech[1]>0 && tech[0]===0) vp[1]+=TECHNOLOGY_VP;
+  vp[0]+=technologyVP(tech[0]);
+  vp[1]+=technologyVP(tech[1]);
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
